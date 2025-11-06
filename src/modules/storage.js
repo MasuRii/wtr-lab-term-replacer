@@ -38,13 +38,18 @@ export async function saveTermListLocation() {
   try {
     const termListContainer = document.querySelector('.wtr-replacer-content');
     if (termListContainer) {
+      // Capture more detailed location information for better preservation
       const locationData = {
         page: state.currentPage,
         scrollTop: termListContainer.scrollTop,
-        searchValue: state.currentSearchValue
+        scrollHeight: termListContainer.scrollHeight,
+        clientHeight: termListContainer.clientHeight,
+        searchValue: state.currentSearchValue,
+        timestamp: Date.now() // Add timestamp for better tracking
       };
       await GM_setValue(`${C.CURRENT_LOCATION_KEY}_${state.novelSlug}`, locationData);
       state.savedTermListLocation = locationData;
+      log(state.globalSettings, `WTR Term Replacer: Saved scroll position - top: ${locationData.scrollTop}, page: ${locationData.page}`);
     }
   } catch (e) {
     console.error('Error saving term list location:', e);

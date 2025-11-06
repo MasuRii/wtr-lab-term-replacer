@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name WTR Lab Term Replacer
 // @description A modular, Webpack-powered version of the WTR Lab Term Replacer userscript.
-// @version 5.4.0
+// @version 5.4.1
 // @author MasuRii
 // @homepage https://github.com/MasuRii/wtr-lab-term-replacer-webpack#readme
 // @supportURL https://github.com/MasuRii/wtr-lab-term-replacer-webpack/issues
@@ -545,6 +545,7 @@ Object.defineProperty(exports, "saveTermListLocation", ({
 exports.setSearchFieldValue = setSearchFieldValue;
 exports.toggleLogging = toggleLogging;
 exports.validateRegex = validateRegex;
+exports.validateRegexSilent = validateRegexSilent;
 var _state = __webpack_require__("./src/modules/state.js");
 var _storage = __webpack_require__("./src/modules/storage.js");
 var _ui = __webpack_require__("./src/modules/ui.js");
@@ -568,8 +569,23 @@ function validateRegex(pattern) {
     return true;
   } catch (e) {
     (0, _utils.log)(_state.state.globalSettings, `WTR Term Replacer: Invalid regex pattern: ${pattern} - ${e.message}`);
-    alert(`Invalid Regular Expression:\n\n${e.message}`);
     return false;
+  }
+}
+
+// Silent validation for real-time visual feedback
+function validateRegexSilent(pattern) {
+  try {
+    new RegExp(pattern);
+    return {
+      isValid: true,
+      error: null
+    };
+  } catch (e) {
+    return {
+      isValid: false,
+      error: e.message
+    };
   }
 }
 async function handleSaveTerm() {
@@ -583,12 +599,11 @@ async function handleSaveTerm() {
   (0, _utils.log)(_state.state.globalSettings, `WTR Term Replacer: Saving term - original: "${original}", replacement: "${replacementInput.value}", isRegex: ${isRegex}, wholeWord: ${wholeWord}, caseSensitive: ${document.getElementById('wtr-case-sensitive').checked}`);
   if (!original) {
     (0, _utils.log)(_state.state.globalSettings, 'WTR Term Replacer: Save term failed - empty original text');
-    alert('Original text cannot be empty.');
-    return;
+    return; // No error message shown, rely on disabled save button
   }
   if (isRegex && !validateRegex(original)) {
     (0, _utils.log)(_state.state.globalSettings, 'WTR Term Replacer: Save term failed - invalid regex pattern');
-    return;
+    return; // No error message shown, rely on visual feedback
   }
   const newTerm = {
     id: id || `term_${Date.now()}`,
@@ -1112,10 +1127,6 @@ var _utils = __webpack_require__("./src/modules/utils.js");
 
 function waitForInitialContent() {
   (0, _utils.log)(_state.state.globalSettings, 'WTR Term Replacer: Starting robust content detection for slow-loading websites...');
-
-  // Enhanced detection with multiple strategies
-  (0, _utils.log)(_state.state.globalSettings, 'WTR Term Replacer: Setting up multi-strategy content detection');
-  detectContentWithMultipleStrategies();
 
   // Set up mutation observer for dynamic content loading
   (0, _utils.log)(_state.state.globalSettings, 'WTR Term Replacer: Setting up content change observer');
@@ -1754,13 +1765,18 @@ async function saveTermListLocation() {
   try {
     const termListContainer = document.querySelector('.wtr-replacer-content');
     if (termListContainer) {
+      // Capture more detailed location information for better preservation
       const locationData = {
         page: _state.state.currentPage,
         scrollTop: termListContainer.scrollTop,
-        searchValue: _state.state.currentSearchValue
+        scrollHeight: termListContainer.scrollHeight,
+        clientHeight: termListContainer.clientHeight,
+        searchValue: _state.state.currentSearchValue,
+        timestamp: Date.now() // Add timestamp for better tracking
       };
       await GM_setValue(`${C.CURRENT_LOCATION_KEY}_${_state.state.novelSlug}`, locationData);
       _state.state.savedTermListLocation = locationData;
+      (0, _utils.log)(_state.state.globalSettings, `WTR Term Replacer: Saved scroll position - top: ${locationData.scrollTop}, page: ${locationData.page}`);
     }
   } catch (e) {
     console.error('Error saving term list location:', e);
@@ -2002,6 +2018,15 @@ const UI_HTML = `
     </div>
 `;
 const UI_CSS = `
+    /* --- Google Material Symbols --- */
+    @import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,1,0');
+    
+    .material-symbols-outlined {
+        font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        font-size: 16px;
+        vertical-align: middle;
+    }
+
     /* --- Main UI Container --- */
     .wtr-replacer-ui {
         position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
@@ -2056,6 +2081,25 @@ const UI_CSS = `
         word-wrap: break-word; white-space: pre-wrap;
     }
     .wtr-replacer-form-group input[type="checkbox"] { margin-right: 0.5rem; }
+
+    /* --- Visual Validation States --- */
+    .wtr-replacer-form-group .wtr-field-invalid {
+        border-color: var(--bs-danger) !important;
+        background-color: rgba(var(--bs-danger-rgb), 0.1) !important;
+        box-shadow: 0 0 0 0.2rem rgba(var(--bs-danger-rgb), 0.25);
+    }
+    
+    .wtr-replacer-form-group .wtr-field-valid {
+        border-color: var(--bs-success) !important;
+        background-color: rgba(var(--bs-success-rgb), 0.1) !important;
+    }
+    
+    .wtr-save-btn:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+        background-color: var(--bs-secondary);
+        border-color: var(--bs-secondary);
+    }
 
     /* --- Buttons (Scoped to UI) --- */
     .wtr-replacer-ui .btn {
@@ -2288,6 +2332,49 @@ function createUI() {
   originalTextarea.addEventListener('input', autoResizeTextarea);
   originalTextarea.addEventListener('focus', autoResizeTextarea);
 
+  // Real-time regex validation system
+  const saveButton = uiContainer.querySelector('#wtr-save-btn');
+  const replacementInput = uiContainer.querySelector('#wtr-replacement');
+  function updateValidationVisual(state) {
+    // Remove all validation classes
+    originalTextarea.classList.remove('wtr-field-invalid', 'wtr-field-valid');
+    if (state === 'invalid') {
+      originalTextarea.classList.add('wtr-field-invalid');
+    } else if (state === 'valid') {
+      originalTextarea.classList.add('wtr-field-valid');
+    }
+  }
+  function validateAndUpdateUI() {
+    const isRegexEnabled = regexCheckbox.checked;
+    const originalText = originalTextarea.value.trim();
+    const replacementText = replacementInput.value.trim();
+    const isValidInput = originalText.length > 0 && replacementText.length > 0;
+    if (!isRegexEnabled || originalText.length === 0) {
+      // Not a regex or empty field, clear validation state
+      updateValidationVisual(null);
+      saveButton.disabled = !isValidInput;
+      return;
+    }
+
+    // Validate regex pattern
+    const validation = Handlers.validateRegexSilent(originalText);
+    if (validation.isValid) {
+      updateValidationVisual('valid');
+      saveButton.disabled = !isValidInput;
+    } else {
+      updateValidationVisual('invalid');
+      saveButton.disabled = true;
+    }
+  }
+
+  // Add real-time validation listeners
+  originalTextarea.addEventListener('input', validateAndUpdateUI);
+  replacementInput.addEventListener('input', validateAndUpdateUI);
+  regexCheckbox.addEventListener('change', validateAndUpdateUI);
+
+  // Initial validation state
+  validateAndUpdateUI();
+
   // Create floating action button
   const addTermFloatBtn = document.createElement('button');
   addTermFloatBtn.className = 'wtr-add-term-float-btn';
@@ -2352,7 +2439,12 @@ function renderTermList(filter = '') {
   const prevBtn = document.getElementById('wtr-prev-page-btn');
   const nextBtn = document.getElementById('wtr-next-page-btn');
   const lastBtn = document.getElementById('wtr-last-page-btn');
+  const contentArea = document.querySelector('.wtr-replacer-content');
   if (!listEl || !paginationControls || !pageIndicator || !prevBtn || !nextBtn || !firstBtn || !lastBtn) return;
+
+  // Capture current scroll position before re-rendering
+  const previousScrollTop = contentArea ? contentArea.scrollTop : 0;
+  const shouldRestoreScroll = previousScrollTop > 0 && !_state.state.isDupMode && filter === _state.state.currentSearchValue;
   listEl.innerHTML = '';
   let filteredTerms;
   let termsToRender;
@@ -2411,6 +2503,14 @@ function renderTermList(filter = '') {
     });
     listEl.appendChild(fragment);
   }
+
+  // Restore scroll position after DOM update if it was captured
+  if (shouldRestoreScroll && contentArea) {
+    // Use requestAnimationFrame to ensure DOM has been updated
+    requestAnimationFrame(() => {
+      contentArea.scrollTop = previousScrollTop;
+    });
+  }
 }
 function showUIPanel() {
   const ui = document.querySelector('.wtr-replacer-ui');
@@ -2454,10 +2554,55 @@ function showFormView(term = null) {
       const lines = Math.ceil(charCount / 40);
       originalTextarea.rows = Math.max(1, lines);
     }
+
+    // Re-initialize validation state for the form
+    const regexCheckbox = document.getElementById('wtr-is-regex');
+    if (regexCheckbox) {
+      const validationEvent = new Event('input', {
+        bubbles: true
+      });
+      originalTextarea.dispatchEvent(validationEvent);
+    }
   }, 10);
 }
 function switchTab(tabName) {
   document.querySelector(`.wtr-replacer-tab-btn[data-tab="${tabName}"]`).click();
+}
+
+// Simple function to create menu buttons with inline SVG icons
+function createSimpleMenuButton(options) {
+  const {
+    text = 'Settings',
+    onClick = null,
+    className = '',
+    tooltip = ''
+  } = options;
+  const button = document.createElement('button');
+  button.className = `replacer-settings-btn ${className}`;
+  if (tooltip) button.title = tooltip;
+
+  // Create settings icon using the specified SVG
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+  svg.setAttribute('height', '24px');
+  svg.setAttribute('viewBox', '0 -960 960 960');
+  svg.setAttribute('width', '24px');
+  svg.setAttribute('fill', '#1f1f1f');
+  svg.style.marginRight = '4px';
+  svg.style.verticalAlign = 'middle';
+  svg.innerHTML = '<path d="M700-120h40v-100h100v-40H740v-100h-40v100H600v40h100v100Zm20 80q-83 0-141.5-58.5T520-240q0-83 58.5-141.5T720-440q83 0 141.5 58.5T920-240q0 83-58.5 141.5T720-40ZM280-600h400v-80H280v80Zm187 480H200q-33 0-56.5-23.5T120-200v-560q0-33 23.5-56.5T200-840h560q33 0 56.5 23.5T840-760v268q-29-14-58.5-21t-61.5-7q-11 0-20.5.5T680-517v-3H280v80h245q-18 17-32.5 37T467-360H280v80h163q-2 10-2.5 19.5T440-240q0 33 6 61.5t21 58.5Z"/>';
+  button.appendChild(svg);
+
+  // Add text
+  const textSpan = document.createElement('span');
+  textSpan.textContent = text;
+  button.appendChild(textSpan);
+
+  // Add click handler
+  if (onClick) {
+    button.addEventListener('click', onClick);
+  }
+  return button;
 }
 function addMenuButton() {
   const container = document.querySelector('div.col-6:has(button.term-edit-btn)');
@@ -2471,13 +2616,17 @@ function addMenuButton() {
     // 1. Create the button if it doesn't exist
     if (!settingsButton) {
       if (!originalButton) return; // Can't create if the original doesn't exist yet
-      settingsButton = document.createElement('button');
-      settingsButton.className = originalButton.className; // Copy classes for styling
-      settingsButton.classList.add('replacer-settings-btn');
-      settingsButton.innerHTML = `<svg><use href="/icons/sprite.svg#cog-outline"></use></svg> Term Settings`;
-      settingsButton.addEventListener('click', showUIPanel);
+
+      // Create button with simple inline SVG icon
+      settingsButton = createSimpleMenuButton({
+        text: 'Term Settings',
+        onClick: showUIPanel,
+        className: originalButton.className,
+        // Copy classes for styling
+        tooltip: 'Open WTR Term Settings'
+      });
       container.appendChild(settingsButton);
-      (0, _utils.log)(_state.state.globalSettings, 'WTR Term Replacer: Settings button created.');
+      (0, _utils.log)(_state.state.globalSettings, 'WTR Term Replacer: Settings button created with simple icon system.');
     }
 
     // 2. Enforce the correct order (our button should be last)

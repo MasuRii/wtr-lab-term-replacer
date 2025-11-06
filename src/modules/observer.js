@@ -7,9 +7,6 @@ import { getChapterIdFromUrl, log } from "./utils";
 export function waitForInitialContent() {
   log(state.globalSettings, 'WTR Term Replacer: Starting robust content detection for slow-loading websites...');
 
-  // Enhanced detection with multiple strategies
-  log(state.globalSettings, 'WTR Term Replacer: Setting up multi-strategy content detection');
-  detectContentWithMultipleStrategies();
 
   // Set up mutation observer for dynamic content loading
   log(state.globalSettings, 'WTR Term Replacer: Setting up content change observer');

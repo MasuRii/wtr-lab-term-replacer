@@ -23,8 +23,17 @@ export function validateRegex(pattern) {
     return true;
   } catch (e) {
     log(state.globalSettings, `WTR Term Replacer: Invalid regex pattern: ${pattern} - ${e.message}`);
-    alert(`Invalid Regular Expression:\n\n${e.message}`);
     return false;
+  }
+}
+
+// Silent validation for real-time visual feedback
+export function validateRegexSilent(pattern) {
+  try {
+    new RegExp(pattern);
+    return { isValid: true, error: null };
+  } catch (e) {
+    return { isValid: false, error: e.message };
   }
 }
 
@@ -41,12 +50,11 @@ export async function handleSaveTerm() {
   
   if (!original) {
     log(state.globalSettings, 'WTR Term Replacer: Save term failed - empty original text');
-    alert('Original text cannot be empty.');
-    return;
+    return; // No error message shown, rely on disabled save button
   }
   if (isRegex && !validateRegex(original)) {
     log(state.globalSettings, 'WTR Term Replacer: Save term failed - invalid regex pattern');
-    return;
+    return; // No error message shown, rely on visual feedback
   }
   
   const newTerm = {

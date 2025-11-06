@@ -167,6 +167,7 @@ async function main() {
   log(state.globalSettings, 'WTR Term Replacer: Registering menu commands...');
   GM_registerMenuCommand("Term Replacer Settings", Handlers.showUIPanel);
   GM_registerMenuCommand("Toggle Logging", Handlers.toggleLogging);
+  
 
   log(state.globalSettings, 'WTR Term Replacer: Starting initial content detection...');
   waitForInitialContent();

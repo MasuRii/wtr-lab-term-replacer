@@ -3,12 +3,13 @@ const common = require("./webpack.common.js");
 const path = require("path");
 const { UserscriptPlugin } = require("webpack-userscript");
 const packageJson = require("../package.json");
+const { versionManager, VERSION_INFO } = require("../config/versions.js");
 
 module.exports = merge(common, {
   mode: "none", // 'none' is best for readable output without dev helpers
   output: {
     path: path.resolve(__dirname, "..", "dist"),
-    filename: "wtr-lab-term-replacer.greasyfork.user.js",
+    filename: `wtr-lab-term-replacer.${versionManager.getSemanticVersion()}.greasyfork.user.js`,
   },
   optimization: {
     minimize: false,
@@ -23,7 +24,7 @@ module.exports = merge(common, {
     new UserscriptPlugin({
       headers: {
         name: "WTR Lab Term Replacer",
-        version: packageJson.version,
+        version: versionManager.getGreasyforkVersion(),
         description: packageJson.description,
         author: packageJson.author,
         license: packageJson.license,

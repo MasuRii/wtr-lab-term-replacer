@@ -1,12 +1,11 @@
 // ==UserScript==
 // @name WTR Lab Term Replacer
 // @description A modular, Webpack-powered version of the WTR Lab Term Replacer userscript.
-// @version 5.4.0
+// @version 5.4.1
 // @author MasuRii
 // @homepage https://github.com/MasuRii/wtr-lab-term-replacer-webpack#readme
 // @supportURL https://github.com/MasuRii/wtr-lab-term-replacer-webpack/issues
 // @match https://wtr-lab.com/en/novel/*/*/*
-// @downloadURL https://github.com/MasuRii/wtr-lab-term-replacer-webpack#readme/raw/main/dist/wtr-lab-term-replacer.performance.user.js
 // @grant GM_setValue
 // @grant GM_getValue
 // @grant GM_listValues
@@ -16,5 +15,4 @@
 // @license MIT
 // @namespace http://tampermonkey.net/
 // @run-at document-idle
-// @updateURL https://github.com/MasuRii/wtr-lab-term-replacer-webpack#readme/raw/main/dist/wtr-lab-term-replacer.performance.meta.js
 // ==/UserScript==

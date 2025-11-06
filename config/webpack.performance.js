@@ -3,12 +3,13 @@ const common = require("./webpack.common.js");
 const path = require("path");
 const { UserscriptPlugin } = require("webpack-userscript");
 const packageJson = require("../package.json");
+const { versionManager, VERSION_INFO } = require("../config/versions.js");
 
 module.exports = merge(common, {
   mode: "production",
   output: {
     path: path.resolve(__dirname, "..", "dist"),
-    filename: "wtr-lab-term-replacer.performance.user.js",
+    filename: `wtr-lab-term-replacer.${versionManager.getSemanticVersion()}.performance.user.js`,
   },
   optimization: {
     minimize: true,
@@ -22,7 +23,7 @@ module.exports = merge(common, {
     new UserscriptPlugin({
       headers: {
         name: "WTR Lab Term Replacer",
-        version: packageJson.version,
+        version: versionManager.getGreasyforkVersion(),
         description: packageJson.description,
         author: packageJson.author,
         license: packageJson.license,
@@ -37,8 +38,8 @@ module.exports = merge(common, {
           "GM_registerMenuCommand",
         ],
         icon: "https://www.google.com/s2/favicons?sz=64&domain=wtr-lab.com",
-        updateURL: `${packageJson.homepage}/raw/main/dist/wtr-lab-term-replacer.performance.meta.js`,
-        downloadURL: `${packageJson.homepage}/raw/main/dist/wtr-lab-term-replacer.performance.user.js`,
+        updateURL: `${packageJson.homepage}/raw/main/dist/wtr-lab-term-replacer.${versionManager.getSemanticVersion()}.performance.meta.js`,
+        downloadURL: `${packageJson.homepage}/raw/main/dist/wtr-lab-term-replacer.${versionManager.getSemanticVersion()}.performance.user.js`,
       },
     }),
   ],

@@ -4,6 +4,58 @@ All notable changes to the WTR Lab Term Replacer project will be documented in t
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.4.1] - 2025-11-06
+
+### 🔧 Versioning & Documentation Updates
+
+This release focuses on enhanced version management and documentation improvements, while introducing several user experience enhancements.
+
+#### 🎯 Version Management System
+- **NEW**: Centralized versioning system with single source of truth
+- **NEW**: Automated version propagation to all project files
+- **NEW**: Environment variable support for version overrides
+- **NEW**: Version validation and utility functions
+- **IMPROVED**: Simplified version update workflow - edit 1 file, run script, all files updated
+- **IMPROVED**: Reduced version management complexity and error potential
+- **FIXED**: Complete version management coverage including GreasyForkREADME.md
+- **FIXED**: Version consistency across all project files and documentation
+
+#### 📜 Documentation & User Experience
+- **NEW**: Enhanced user feedback and visual validation
+- **IMPROVED**: Better error messaging and user guidance
+- **IMPROVED**: Updated documentation for new versioning system
+- **IMPROVED**: Streamlined build and deployment process
+
+#### 🔄 System Enhancements
+- **NEW**: Scroll position preservation across page interactions
+- **NEW**: Robust icon system with improved reliability
+- **NEW**: Visual regex validation for better user experience
+- **IMPROVED**: Overall system stability and performance
+- **IMPROVED**: Enhanced development workflow with new npm scripts
+
+### Technical Improvements
+- **NEW**: Build-time version injection system
+- **NEW**: Version management CLI tools
+- **IMPROVED**: Automated documentation generation
+- **IMPROVED**: Better version consistency across all outputs
+
+### Developer Experience
+- **NEW**: `npm run version:update` - Automated version propagation
+- **NEW**: `npm run version:check` - Version information display
+- **NEW**: `npm run version:validate` - Version validation
+- **NEW**: Comprehensive version management documentation
+
+### Performance & Reliability
+- **IMPROVED**: Reduced manual version management overhead
+- **IMPROVED**: Eliminated version inconsistency issues
+- **IMPROVED**: Faster release process with automated updates
+- **IMPROVED**: Better build reliability and consistency
+
+### Known Issues
+- None at this time
+
+---
+
 ## [5.4.0] - 2025-11-06
 
 ### 🎉 Major Release - Modular Architecture & Webpack Build System

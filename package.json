@@ -1,14 +1,20 @@
 {
   "name": "wtr-lab-term-replacer",
-  "version": "5.4.0",
+  "version": "5.4.1",
   "description": "A modular, Webpack-powered version of the WTR Lab Term Replacer userscript.",
-  "main": "WTR Lab Term Replacer-5.4.user.js",
+  "main": "WTR Lab Term Replacer-5.4.1.user.js",
   "private": true,
   "scripts": {
     "dev": "webpack serve --config config/webpack.dev.js",
-    "build:performance": "webpack --config config/webpack.performance.js",
-    "build:greasyfork": "webpack --config config/webpack.greasyfork.js",
-    "build": "npm run build:performance && npm run build:greasyfork"
+    "build:performance": "node scripts/update-versions.js update && webpack --config config/webpack.performance.js",
+    "build:greasyfork": "node scripts/update-versions.js update && webpack --config config/webpack.greasyfork.js",
+    "build": "node scripts/update-versions.js update && npm run build:performance && npm run build:greasyfork",
+    "version:update": "node scripts/update-versions.js update",
+    "version:check": "node scripts/update-versions.js version",
+    "version:banner": "node scripts/update-versions.js banner",
+    "version:header": "node scripts/update-versions.js header",
+    "version:help": "node scripts/update-versions.js",
+    "version:validate": "node scripts/validate-versions.js"
   },
   "repository": {
     "type": "git",
@@ -27,6 +33,7 @@
     "@babel/preset-env": "^7.28.5",
     "babel-loader": "^10.0.0",
     "eslint": "^9.39.1",
+    "semver": "^7.7.3",
     "webpack": "^5.102.1",
     "webpack-cli": "^6.0.1",
     "webpack-dev-server": "^5.2.2",
