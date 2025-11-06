@@ -1,0 +1,36 @@
+{
+  "name": "wtr-lab-term-replacer",
+  "version": "5.4.0",
+  "description": "A modular, Webpack-powered version of the WTR Lab Term Replacer userscript.",
+  "main": "WTR Lab Term Replacer-5.4.user.js",
+  "private": true,
+  "scripts": {
+    "dev": "webpack serve --config config/webpack.dev.js",
+    "build:performance": "webpack --config config/webpack.performance.js",
+    "build:greasyfork": "webpack --config config/webpack.greasyfork.js",
+    "build": "npm run build:performance && npm run build:greasyfork"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MasuRii/wtr-lab-term-replacer-webpack.git"
+  },
+  "keywords": [],
+  "author": "MasuRii",
+  "license": "MIT",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/MasuRii/wtr-lab-term-replacer-webpack/issues"
+  },
+  "homepage": "https://github.com/MasuRii/wtr-lab-term-replacer-webpack#readme",
+  "devDependencies": {
+    "@babel/core": "^7.28.5",
+    "@babel/preset-env": "^7.28.5",
+    "babel-loader": "^10.0.0",
+    "eslint": "^9.39.1",
+    "webpack": "^5.102.1",
+    "webpack-cli": "^6.0.1",
+    "webpack-dev-server": "^5.2.2",
+    "webpack-merge": "^6.0.1",
+    "webpack-userscript": "^3.2.3"
+  }
+}
