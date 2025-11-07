@@ -9,6 +9,7 @@ import { reprocessCurrentChapter, processVisibleChapter } from "./observer";
 import { computeDupGroups, exitDupMode, changeDupGroup, updateDupModeAfterChange } from "./duplicates";
 import { log } from "./utils";
 import { performReplacements, revertAllReplacements } from "./engine";
+import { getVersion } from "../../config/versions";
 
 // Export hideUIPanel function that can be called from UI
 export function hideUIPanel() {
@@ -79,6 +80,7 @@ export async function handleSaveTerm() {
   log(state.globalSettings, `WTR Term Replacer: Term saved successfully, total terms: ${state.terms.length}`);
   reprocessCurrentChapter();
   
+  // Clear form fields
   originalInput.value = '';
   replacementInput.value = '';
   document.getElementById('wtr-term-id').value = '';
@@ -225,7 +227,7 @@ export function downloadJSON(data, filename) {
 
 // Enhanced Export Functions
 export async function handleExportNovel() {
-  const exportData = { formatVersion: '5.4', settings: { [state.novelSlug]: state.settings }, terms: { [state.novelSlug]: state.terms } };
+  const exportData = { formatVersion: getVersion(), settings: { [state.novelSlug]: state.settings }, terms: { [state.novelSlug]: state.terms } };
   downloadJSON(exportData, `${state.novelSlug}-terms.json`);
 }
 
@@ -238,7 +240,7 @@ export async function handleExportAll() {
     
     const termKeys = allKeys.filter(k => k.startsWith(TERMS_STORAGE_KEY_PREFIX));
     const settingKeys = allKeys.filter(k => k.startsWith(SETTINGS_STORAGE_KEY_PREFIX));
-    const exportData = { formatVersion: '5.4', settings: {}, terms: {} };
+    const exportData = { formatVersion: getVersion(), settings: {}, terms: {} };
     
     for (const key of termKeys) {
       const slug = key.replace(TERMS_STORAGE_KEY_PREFIX, '');
@@ -263,7 +265,7 @@ export async function handleExportCombined() {
   try {
     // Step 1: Export novel terms first
     const novelExportData = {
-      formatVersion: '5.4',
+      formatVersion: getVersion(),
       settings: { [state.novelSlug]: state.settings },
       terms: { [state.novelSlug]: state.terms }
     };
@@ -283,7 +285,7 @@ export async function handleExportCombined() {
       
       const termKeys = allKeys.filter(k => k.startsWith(TERMS_STORAGE_KEY_PREFIX));
       const settingKeys = allKeys.filter(k => k.startsWith(SETTINGS_STORAGE_KEY_PREFIX));
-      const allExportData = { formatVersion: '5.4', settings: {}, terms: {} };
+      const allExportData = { formatVersion: getVersion(), settings: {}, terms: {} };
       
       for (const key of termKeys) {
         const slug = key.replace(TERMS_STORAGE_KEY_PREFIX, '');
@@ -376,7 +378,6 @@ export async function handleFileImport(event) {
           'This file contains settings. Would you like to import and overwrite your current settings?'
         );
       }
-      
       let totalAdded = 0,
         totalSkipped = 0,
         totalConflicts = 0,
@@ -482,7 +483,9 @@ export function handleTabSwitch(e) {
   // Save current state before switching (if on terms tab)
   const currentTab = document.querySelector('.wtr-replacer-tab-btn.active').dataset.tab;
   if (currentTab === 'terms') {
-    saveSearchFieldValue();
+    // Save the full scroll position when leaving terms tab
+    log(state.globalSettings, `WTR Term Replacer: Saving scroll position before switching from terms to ${targetTab}`);
+    saveTermListLocation();
   }
 
   document.querySelectorAll('.wtr-replacer-tab-btn').forEach(btn => btn.classList.remove('active'));
@@ -491,6 +494,7 @@ export function handleTabSwitch(e) {
   document.getElementById(`wtr-tab-${targetTab}`).classList.add('active');
 
   if (targetTab === 'terms') {
+    log(state.globalSettings, 'WTR Term Replacer: Restoring scroll position after switching to terms tab');
     restoreTermListLocation();
   } else {
     clearTermList();
@@ -534,6 +538,7 @@ export async function restoreTermListLocation() {
     const saved = await GM_getValue(`wtr_lab_term_list_location_${state.novelSlug}`, null);
     if (saved) {
       state.savedTermListLocation = saved;
+      log(state.globalSettings, `WTR Term Replacer: Restoring scroll position - top: ${saved.scrollTop}, page: ${saved.page}`);
     }
     state.currentPage = state.savedTermListLocation.page || 1;
     state.currentSearchValue = state.savedTermListLocation.searchValue || '';
@@ -551,6 +556,7 @@ export async function restoreTermListLocation() {
       const termListContainer = document.querySelector('.wtr-replacer-content');
       if (termListContainer && state.savedTermListLocation.scrollTop) {
         termListContainer.scrollTop = state.savedTermListLocation.scrollTop;
+        log(state.globalSettings, `WTR Term Replacer: Scroll position restored to ${state.savedTermListLocation.scrollTop}`);
       }
     }, 100);
   } catch (e) {
@@ -589,4 +595,3 @@ export async function addTermProgrammatically(original, replacement, isRegex = f
     log(state.globalSettings, `WTR Term Replacer: Skipped adding duplicate term: ${newTerm.original}`);
   }
 }
-

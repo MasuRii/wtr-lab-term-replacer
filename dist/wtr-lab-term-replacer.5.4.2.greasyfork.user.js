@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name WTR Lab Term Replacer
 // @description A modular, Webpack-powered version of the WTR Lab Term Replacer userscript.
-// @version 5.4.1
+// @version 5.4.2
 // @author MasuRii
 // @homepage https://github.com/MasuRii/wtr-lab-term-replacer-webpack#readme
 // @supportURL https://github.com/MasuRii/wtr-lab-term-replacer-webpack/issues
@@ -20,6 +20,241 @@
 /******/ (() => { // webpackBootstrap
 /******/ 	"use strict";
 /******/ 	var __webpack_modules__ = ({
+
+/***/ "./config/versions.js":
+/***/ ((module) => {
+
+
+
+/**
+ * Centralized Version Management System
+ *
+ * This file serves as the single source of truth for all version information.
+ * When updating versions, only edit this file - all other references will be
+ * automatically updated during the build process.
+ *
+ * Environment variable support:
+ * - WTR_VERSION: Override version (e.g., "1.0.0")
+ * - WTR_BUILD_ENV: Override build environment
+ * - WTR_BUILD_DATE: Override build date (ISO format)
+ */
+
+/**
+ * Safe environment variable access for both Node.js and browser environments
+ */
+const getEnvVar = (name, defaultValue = null) => {
+  try {
+    // Check if we're in Node.js environment
+    if (typeof process !== 'undefined' && process.env && typeof process.env === 'object') {
+      return process.env[name] || defaultValue;
+    }
+    // Check if we're in browser environment - look for global config
+    if (typeof window !== 'undefined' && window.WTR_CONFIG && window.WTR_CONFIG[name]) {
+      return window.WTR_CONFIG[name];
+    }
+    // If no config found, return default
+    return defaultValue;
+  } catch (e) {
+    // Fallback to default value on any error
+    return defaultValue;
+  }
+};
+
+/**
+ * Current version information
+ * Update this object when releasing a new version
+ *
+ * Environment variables take precedence if set
+ */
+const envVersion = getEnvVar('WTR_VERSION');
+const envBuildEnv = getEnvVar('WTR_BUILD_ENV', "production");
+const envBuildDate = getEnvVar('WTR_BUILD_DATE');
+const VERSION_INFO = {
+  // Semantic version (MAJOR.MINOR.PATCH) - can be overridden by WTR_VERSION
+  SEMANTIC: envVersion || "5.4.2",
+  // Human-readable version display
+  DISPLAY: `v${envVersion || "5.4.2"}`,
+  // Build metadata - can be overridden by environment variables
+  BUILD_DATE: envBuildDate || "2025-11-06",
+  BUILD_ENV: envBuildEnv,
+  // GreasyFork specific version (can differ from semantic)
+  GREASYFORK: envVersion || "5.4.2",
+  // NPM version
+  NPM: envVersion || "5.4.2",
+  // Badge version for README
+  BADGE: envVersion || "5.4.2",
+  // Changelog version
+  CHANGELOG: envVersion || "5.4.2",
+  // Additional metadata
+  META: {
+    MAJOR: parseInt((envVersion || "5.4.2").split(".")[0]),
+    MINOR: parseInt((envVersion || "5.4.2").split(".")[1]),
+    PATCH: parseInt((envVersion || "5.4.2").split(".")[2]),
+    PRE_RELEASE: null,
+    // e.g., 'alpha', 'beta', 'rc.1'
+    BUILD_METADATA: null // e.g., 'build.123'
+  }
+};
+
+/**
+ * Version validation and utility functions
+ */
+class VersionManager {
+  constructor() {
+    this.currentVersion = VERSION_INFO;
+  }
+
+  /**
+   * Get semantic version (e.g., "1.2.3")
+   */
+  getSemanticVersion() {
+    return this.currentVersion.SEMANTIC;
+  }
+
+  /**
+   * Get display version (e.g., "v1.2.3")
+   */
+  getDisplayVersion() {
+    return this.currentVersion.DISPLAY;
+  }
+
+  /**
+   * Get NPM version
+   */
+  getNpmVersion() {
+    return this.currentVersion.NPM;
+  }
+
+  /**
+   * Get GreasyFork version
+   */
+  getGreasyforkVersion() {
+    return this.currentVersion.GREASYFORK;
+  }
+
+  /**
+   * Get badge version for README
+   */
+  getBadgeVersion() {
+    return this.currentVersion.BADGE;
+  }
+
+  /**
+   * Get changelog version
+   */
+  getChangelogVersion() {
+    return this.currentVersion.CHANGELOG;
+  }
+
+  /**
+   * Get build metadata
+   */
+  getBuildMetadata() {
+    return {
+      buildDate: this.currentVersion.BUILD_DATE,
+      buildEnv: this.currentVersion.BUILD_ENV,
+      version: this.currentVersion.SEMANTIC
+    };
+  }
+
+  /**
+   * Get full version object
+   */
+  getAllVersionInfo() {
+    return {
+      ...this.currentVersion
+    };
+  }
+
+  /**
+   * Update version information
+   * This should be called when preparing a new release
+   */
+  updateVersion(newVersion) {
+    const parts = newVersion.split(".");
+    if (parts.length !== 3) {
+      throw new Error("Version must be in semantic format MAJOR.MINOR.PATCH");
+    }
+    const [major, minor, patch] = parts.map(Number);
+    this.currentVersion.SEMANTIC = newVersion;
+    this.currentVersion.DISPLAY = `v${newVersion}`;
+    this.currentVersion.NPM = newVersion;
+    this.currentVersion.GREASYFORK = newVersion;
+    this.currentVersion.BADGE = newVersion;
+    this.currentVersion.CHANGELOG = newVersion;
+    this.currentVersion.META = {
+      MAJOR: major,
+      MINOR: minor,
+      PATCH: patch,
+      PRE_RELEASE: null,
+      BUILD_METADATA: null
+    };
+    return this.getAllVersionInfo();
+  }
+
+  /**
+   * Validate version format
+   */
+  validateVersion(version) {
+    const semanticVersionRegex = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
+    return semanticVersionRegex.test(version);
+  }
+
+  /**
+   * Get version for different targets
+   */
+  getVersionForTarget(target) {
+    const targetMap = {
+      npm: this.getNpmVersion(),
+      greasyfork: this.getGreasyforkVersion(),
+      badge: this.getBadgeVersion(),
+      changelog: this.getChangelogVersion(),
+      default: this.getSemanticVersion()
+    };
+    return targetMap[target] || targetMap.default;
+  }
+
+  /**
+   * Check if version is from environment override
+   */
+  isEnvironmentOverride() {
+    return Boolean(getEnvVar('WTR_VERSION'));
+  }
+
+  /**
+   * Get environment info
+   */
+  getEnvironmentInfo() {
+    return {
+      versionOverride: getEnvVar('WTR_VERSION'),
+      buildEnvOverride: getEnvVar('WTR_BUILD_ENV'),
+      buildDateOverride: getEnvVar('WTR_BUILD_DATE'),
+      isOverride: this.isEnvironmentOverride()
+    };
+  }
+}
+
+// Create singleton instance
+const versionManager = new VersionManager();
+
+// Export both the current version and the manager instance
+module.exports = {
+  VERSION_INFO: versionManager.getAllVersionInfo(),
+  versionManager,
+  // Convenience exports
+  getVersion: () => versionManager.getSemanticVersion(),
+  getDisplayVersion: () => versionManager.getDisplayVersion(),
+  getNpmVersion: () => versionManager.getNpmVersion(),
+  getGreasyforkVersion: () => versionManager.getGreasyforkVersion(),
+  getBadgeVersion: () => versionManager.getBadgeVersion(),
+  getChangelogVersion: () => versionManager.getChangelogVersion(),
+  getBuildMetadata: () => versionManager.getBuildMetadata(),
+  // Environment support
+  isEnvironmentOverride: () => versionManager.isEnvironmentOverride(),
+  getEnvironmentInfo: () => versionManager.getEnvironmentInfo()
+};
+
+/***/ }),
 
 /***/ "./src/modules/config.js":
 /***/ ((__unused_webpack_module, exports) => {
@@ -553,6 +788,7 @@ var _observer = __webpack_require__("./src/modules/observer.js");
 var _duplicates = __webpack_require__("./src/modules/duplicates.js");
 var _utils = __webpack_require__("./src/modules/utils.js");
 var _engine = __webpack_require__("./src/modules/engine.js");
+var _versions = __webpack_require__("./config/versions.js");
 // Event handler functions for WTR Lab Term Replacer
 
 // Re-export saveTermListLocation for UI module
@@ -624,6 +860,8 @@ async function handleSaveTerm() {
   await (0, _storage.saveTerms)(_state.state.terms);
   (0, _utils.log)(_state.state.globalSettings, `WTR Term Replacer: Term saved successfully, total terms: ${_state.state.terms.length}`);
   (0, _observer.reprocessCurrentChapter)();
+
+  // Clear form fields
   originalInput.value = '';
   replacementInput.value = '';
   document.getElementById('wtr-term-id').value = '';
@@ -634,8 +872,6 @@ async function handleSaveTerm() {
   (0, _ui.renderTermList)(_state.state.currentSearchValue);
   if (id) {
     (0, _utils.log)(_state.state.globalSettings, 'WTR Term Replacer: Switching to terms tab after update');
-    // Save current scroll position before switching tabs to maintain location
-    (0, _storage.saveTermListLocation)();
     (0, _ui.switchTab)('terms');
   } else {
     (0, _utils.log)(_state.state.globalSettings, 'WTR Term Replacer: Focusing on original input for next term');
@@ -761,7 +997,7 @@ function downloadJSON(data, filename) {
 // Enhanced Export Functions
 async function handleExportNovel() {
   const exportData = {
-    formatVersion: '5.4.2',
+    formatVersion: (0, _versions.getVersion)(),
     settings: {
       [_state.state.novelSlug]: _state.state.settings
     },
@@ -780,7 +1016,7 @@ async function handleExportAll() {
     const termKeys = allKeys.filter(k => k.startsWith(TERMS_STORAGE_KEY_PREFIX));
     const settingKeys = allKeys.filter(k => k.startsWith(SETTINGS_STORAGE_KEY_PREFIX));
     const exportData = {
-      formatVersion: '5.4.2',
+      formatVersion: (0, _versions.getVersion)(),
       settings: {},
       terms: {}
     };
@@ -807,7 +1043,7 @@ async function handleExportCombined() {
   try {
     // Step 1: Export novel terms first
     const novelExportData = {
-      formatVersion: '5.4.2',
+      formatVersion: (0, _versions.getVersion)(),
       settings: {
         [_state.state.novelSlug]: _state.state.settings
       },
@@ -827,7 +1063,7 @@ async function handleExportCombined() {
       const termKeys = allKeys.filter(k => k.startsWith(TERMS_STORAGE_KEY_PREFIX));
       const settingKeys = allKeys.filter(k => k.startsWith(SETTINGS_STORAGE_KEY_PREFIX));
       const allExportData = {
-        formatVersion: '5.4.2',
+        formatVersion: (0, _versions.getVersion)(),
         settings: {},
         terms: {}
       };
@@ -1008,13 +1244,16 @@ function handleTabSwitch(e) {
   // Save current state before switching (if on terms tab)
   const currentTab = document.querySelector('.wtr-replacer-tab-btn.active').dataset.tab;
   if (currentTab === 'terms') {
-    (0, _storage.saveSearchFieldValue)();
+    // Save the full scroll position when leaving terms tab
+    (0, _utils.log)(_state.state.globalSettings, `WTR Term Replacer: Saving scroll position before switching from terms to ${targetTab}`);
+    (0, _storage.saveTermListLocation)();
   }
   document.querySelectorAll('.wtr-replacer-tab-btn').forEach(btn => btn.classList.remove('active'));
   e.target.classList.add('active');
   document.querySelectorAll('.wtr-replacer-tab-content').forEach(content => content.classList.remove('active'));
   document.getElementById(`wtr-tab-${targetTab}`).classList.add('active');
   if (targetTab === 'terms') {
+    (0, _utils.log)(_state.state.globalSettings, 'WTR Term Replacer: Restoring scroll position after switching to terms tab');
     restoreTermListLocation();
   } else {
     (0, _ui.clearTermList)();
@@ -1056,6 +1295,7 @@ async function restoreTermListLocation() {
     const saved = await GM_getValue(`wtr_lab_term_list_location_${_state.state.novelSlug}`, null);
     if (saved) {
       _state.state.savedTermListLocation = saved;
+      (0, _utils.log)(_state.state.globalSettings, `WTR Term Replacer: Restoring scroll position - top: ${saved.scrollTop}, page: ${saved.page}`);
     }
     _state.state.currentPage = _state.state.savedTermListLocation.page || 1;
     _state.state.currentSearchValue = _state.state.savedTermListLocation.searchValue || '';
@@ -1072,6 +1312,7 @@ async function restoreTermListLocation() {
       const termListContainer = document.querySelector('.wtr-replacer-content');
       if (termListContainer && _state.state.savedTermListLocation.scrollTop) {
         termListContainer.scrollTop = _state.state.savedTermListLocation.scrollTop;
+        (0, _utils.log)(_state.state.globalSettings, `WTR Term Replacer: Scroll position restored to ${_state.state.savedTermListLocation.scrollTop}`);
       }
     }, 100);
   } catch (e) {
@@ -1938,13 +2179,14 @@ var _state = __webpack_require__("./src/modules/state.js");
 var Handlers = _interopRequireWildcard(__webpack_require__("./src/modules/handlers.js"));
 var _utils = __webpack_require__("./src/modules/utils.js");
 var _config = __webpack_require__("./src/modules/config.js");
+var _versions = __webpack_require__("./config/versions.js");
 function _interopRequireWildcard(e, t) { if ("function" == typeof WeakMap) var r = new WeakMap(), n = new WeakMap(); return (_interopRequireWildcard = function (e, t) { if (!t && e && e.__esModule) return e; var o, i, f = { __proto__: null, default: e }; if (null === e || "object" != typeof e && "function" != typeof e) return f; if (o = t ? n : r) { if (o.has(e)) return o.get(e); o.set(e, f); } for (const t in e) "default" !== t && {}.hasOwnProperty.call(e, t) && ((i = (o = Object.defineProperty) && Object.getOwnPropertyDescriptor(e, t)) && (i.get || i.set) ? o(f, t, i) : f[t] = e[t]); return f; })(e, t); }
 // UI creation and manipulation for WTR Lab Term Replacer
 // Hot reload test - development workflow verification
 
 const UI_HTML = `
     <div class="wtr-replacer-header">
-        <h2>Term Replacer v5.4.2</h2>
+        <h2>Term Replacer ${(0, _versions.getDisplayVersion)()}</h2>
         <div class="wtr-replacer-header-controls">
             <div class="wtr-replacer-disable-toggle">
                 <label><input type="checkbox" id="wtr-disable-all"> Disable All</label>
@@ -2673,7 +2915,7 @@ function addMenuButton() {
 /***/ }),
 
 /***/ "./src/modules/utils.js":
-/***/ ((__unused_webpack_module, exports) => {
+/***/ ((__unused_webpack_module, exports, __webpack_require__) => {
 
 
 
@@ -2693,6 +2935,7 @@ exports.log = log;
 exports.logDOMConflict = logDOMConflict;
 exports.logProcessingWithMultiScriptContext = logProcessingWithMultiScriptContext;
 exports.startProcessingTimer = startProcessingTimer;
+var _versions = __webpack_require__("./config/versions.js");
 // Utility functions for WTR Lab Term Replacer
 
 function getNovelSlug() {
@@ -2720,8 +2963,9 @@ function log(globalSettings, ...args) {
     console.log(...args);
   }
 }
+const CURRENT_VERSION = (0, _versions.getVersion)();
 
-// --- [ENHANCED v5.4] MULTI-SCRIPT COORDINATION FUNCTIONS ---
+// --- [ENHANCED ${CURRENT_VERSION}] MULTI-SCRIPT COORDINATION FUNCTIONS ---
 
 function detectOtherWTRScripts() {
   // Detect other WTR Lab scripts by their data attributes or specific patterns

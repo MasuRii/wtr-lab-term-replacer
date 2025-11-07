@@ -1,10 +1,10 @@
 /**
  * Centralized Version Management System
- * 
+ *
  * This file serves as the single source of truth for all version information.
  * When updating versions, only edit this file - all other references will be
  * automatically updated during the build process.
- * 
+ *
  * Environment variable support:
  * - WTR_VERSION: Override version (e.g., "1.0.0")
  * - WTR_BUILD_ENV: Override build environment
@@ -12,46 +12,67 @@
  */
 
 /**
+ * Safe environment variable access for both Node.js and browser environments
+ */
+const getEnvVar = (name, defaultValue = null) => {
+  try {
+    // Check if we're in Node.js environment
+    if (typeof process !== 'undefined' && process.env && typeof process.env === 'object') {
+      return process.env[name] || defaultValue;
+    }
+    // Check if we're in browser environment - look for global config
+    if (typeof window !== 'undefined' && window.WTR_CONFIG && window.WTR_CONFIG[name]) {
+      return window.WTR_CONFIG[name];
+    }
+    // If no config found, return default
+    return defaultValue;
+  } catch (e) {
+    // Fallback to default value on any error
+    return defaultValue;
+  }
+};
+
+/**
  * Current version information
  * Update this object when releasing a new version
- * 
+ *
  * Environment variables take precedence if set
  */
-const envVersion = process.env.WTR_VERSION;
-const envBuildEnv = process.env.WTR_BUILD_ENV || 'production';
-const envBuildDate = process.env.WTR_BUILD_DATE;
+const envVersion = getEnvVar('WTR_VERSION');
+const envBuildEnv = getEnvVar('WTR_BUILD_ENV', "production");
+const envBuildDate = getEnvVar('WTR_BUILD_DATE');
 
 const VERSION_INFO = {
   // Semantic version (MAJOR.MINOR.PATCH) - can be overridden by WTR_VERSION
-  SEMANTIC: envVersion || '5.4.1',
-  
+  SEMANTIC: envVersion || "5.4.2",
+
   // Human-readable version display
-  DISPLAY: `v${envVersion || '5.4.1'}`,
-  
+  DISPLAY: `v${envVersion || "5.4.2"}`,
+
   // Build metadata - can be overridden by environment variables
-  BUILD_DATE: envBuildDate || '2025-11-06',
+  BUILD_DATE: envBuildDate || "2025-11-06",
   BUILD_ENV: envBuildEnv,
-  
+
   // GreasyFork specific version (can differ from semantic)
-  GREASYFORK: envVersion || '5.4.1',
-  
+  GREASYFORK: envVersion || "5.4.2",
+
   // NPM version
-  NPM: envVersion || '5.4.1',
-  
+  NPM: envVersion || "5.4.2",
+
   // Badge version for README
-  BADGE: envVersion || '5.4.1',
-  
+  BADGE: envVersion || "5.4.2",
+
   // Changelog version
-  CHANGELOG: envVersion || '5.4.1',
-  
+  CHANGELOG: envVersion || "5.4.2",
+
   // Additional metadata
   META: {
-    MAJOR: parseInt((envVersion || '5.4.1').split('.')[0]),
-    MINOR: parseInt((envVersion || '5.4.1').split('.')[1]),
-    PATCH: parseInt((envVersion || '5.4.1').split('.')[2]),
+    MAJOR: parseInt((envVersion || "5.4.2").split(".")[0]),
+    MINOR: parseInt((envVersion || "5.4.2").split(".")[1]),
+    PATCH: parseInt((envVersion || "5.4.2").split(".")[2]),
     PRE_RELEASE: null, // e.g., 'alpha', 'beta', 'rc.1'
-    BUILD_METADATA: null // e.g., 'build.123'
-  }
+    BUILD_METADATA: null, // e.g., 'build.123'
+  },
 };
 
 /**
@@ -111,7 +132,7 @@ class VersionManager {
     return {
       buildDate: this.currentVersion.BUILD_DATE,
       buildEnv: this.currentVersion.BUILD_ENV,
-      version: this.currentVersion.SEMANTIC
+      version: this.currentVersion.SEMANTIC,
     };
   }
 
@@ -127,13 +148,13 @@ class VersionManager {
    * This should be called when preparing a new release
    */
   updateVersion(newVersion) {
-    const parts = newVersion.split('.');
+    const parts = newVersion.split(".");
     if (parts.length !== 3) {
-      throw new Error('Version must be in semantic format MAJOR.MINOR.PATCH');
+      throw new Error("Version must be in semantic format MAJOR.MINOR.PATCH");
     }
 
     const [major, minor, patch] = parts.map(Number);
-    
+
     this.currentVersion.SEMANTIC = newVersion;
     this.currentVersion.DISPLAY = `v${newVersion}`;
     this.currentVersion.NPM = newVersion;
@@ -145,7 +166,7 @@ class VersionManager {
       MINOR: minor,
       PATCH: patch,
       PRE_RELEASE: null,
-      BUILD_METADATA: null
+      BUILD_METADATA: null,
     };
 
     return this.getAllVersionInfo();
@@ -155,7 +176,8 @@ class VersionManager {
    * Validate version format
    */
   validateVersion(version) {
-    const semanticVersionRegex = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
+    const semanticVersionRegex =
+      /^\d+\.\d+\.\d+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
     return semanticVersionRegex.test(version);
   }
 
@@ -164,11 +186,11 @@ class VersionManager {
    */
   getVersionForTarget(target) {
     const targetMap = {
-      'npm': this.getNpmVersion(),
-      'greasyfork': this.getGreasyforkVersion(),
-      'badge': this.getBadgeVersion(),
-      'changelog': this.getChangelogVersion(),
-      'default': this.getSemanticVersion()
+      npm: this.getNpmVersion(),
+      greasyfork: this.getGreasyforkVersion(),
+      badge: this.getBadgeVersion(),
+      changelog: this.getChangelogVersion(),
+      default: this.getSemanticVersion(),
     };
 
     return targetMap[target] || targetMap.default;
@@ -178,7 +200,7 @@ class VersionManager {
    * Check if version is from environment override
    */
   isEnvironmentOverride() {
-    return Boolean(process.env.WTR_VERSION);
+    return Boolean(getEnvVar('WTR_VERSION'));
   }
 
   /**
@@ -186,10 +208,10 @@ class VersionManager {
    */
   getEnvironmentInfo() {
     return {
-      versionOverride: process.env.WTR_VERSION || null,
-      buildEnvOverride: process.env.WTR_BUILD_ENV || null,
-      buildDateOverride: process.env.WTR_BUILD_DATE || null,
-      isOverride: this.isEnvironmentOverride()
+      versionOverride: getEnvVar('WTR_VERSION'),
+      buildEnvOverride: getEnvVar('WTR_BUILD_ENV'),
+      buildDateOverride: getEnvVar('WTR_BUILD_DATE'),
+      isOverride: this.isEnvironmentOverride(),
     };
   }
 }
@@ -211,5 +233,5 @@ module.exports = {
   getBuildMetadata: () => versionManager.getBuildMetadata(),
   // Environment support
   isEnvironmentOverride: () => versionManager.isEnvironmentOverride(),
-  getEnvironmentInfo: () => versionManager.getEnvironmentInfo()
+  getEnvironmentInfo: () => versionManager.getEnvironmentInfo(),
 };

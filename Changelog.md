@@ -4,6 +4,45 @@ All notable changes to the WTR Lab Term Replacer project will be documented in t
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.4.2] - 2025-11-07
+
+### 🔧 Mobile UI & Navigation Fixes
+
+This release focuses on improving the mobile user experience and fixing critical navigation issues.
+
+#### 📱 Mobile Interface Improvements
+- **FIXED**: Menu button alignment on mobile devices - removed unnecessary margin-right from text elements
+- **IMPROVED**: Global CSS rule for consistent menu button styling across all device sizes
+- **IMPROVED**: Mobile navigation responsiveness with better text positioning
+
+#### 🔄 Navigation & Scrolling Enhancements
+- **FIXED**: Critical issue where scroll position was not preserved when editing terms
+- **FIXED**: Position reset to top of panel after saving edits instead of maintaining current location
+- **ENHANCED**: Scroll location persistence specifically for multi-page scenarios (e.g., page 15 bottom position)
+- **IMPROVED**: Term list location saving mechanism with better state management
+- **ENHANCED**: Added comprehensive logging for save/restore position tracking
+
+#### 🐛 Bug Fixes
+- **FIXED**: Double tab switching during term save operations that was causing position reset
+- **FIXED**: Race condition in tab switching that prevented proper scroll position preservation
+- **FIXED**: Inconsistent navigation state when returning from Add/Edit Term tab
+
+#### ⚡ Performance & Stability
+- **IMPROVED**: Eliminated duplicate tab switch operations that were causing navigation issues
+- **IMPROVED**: Enhanced state management for better user experience
+- **IMPROVED**: More reliable term editing workflow with proper position maintenance
+
+### Technical Changes
+- Updated global CSS rules for menu button alignment
+- Refactored tab switching logic to prevent duplicate operations
+- Enhanced scroll position tracking and restoration functions
+- Updated version references across all project files
+
+### Known Issues
+- None at this time
+
+---
+
 ## [5.4.1] - 2025-11-06
 
 ### 🔧 Versioning & Documentation Updates

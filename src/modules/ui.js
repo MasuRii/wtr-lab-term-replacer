@@ -4,10 +4,11 @@ import { state } from "./state";
 import * as Handlers from "./handlers";
 import { log } from "./utils";
 import { ITEMS_PER_PAGE } from "./config";
+import { getDisplayVersion } from "../../config/versions";
 
 const UI_HTML = `
     <div class="wtr-replacer-header">
-        <h2>Term Replacer v5.4</h2>
+        <h2>Term Replacer ${getDisplayVersion()}</h2>
         <div class="wtr-replacer-header-controls">
             <div class="wtr-replacer-disable-toggle">
                 <label><input type="checkbox" id="wtr-disable-all"> Disable All</label>
@@ -258,6 +259,12 @@ const UI_CSS = `
         transform: translateY(0);
     }
 
+    /* --- Global Menu Button Alignment Fix --- */
+    /* Fix menu button alignment - remove margin-right from Term Settings for all devices */
+    .bottom-reader-nav .menu-button.small > span {
+        margin-right: 0 !important;
+    }
+
     /* --- Responsive Design (Mobile First) --- */
     #wtr-tab-terms.active {
         display: flex;
@@ -269,6 +276,7 @@ const UI_CSS = `
 
     /* --- Mobile Specific Improvements --- */
     @media (max-width: 768px) {
+
         .wtr-replacer-ui {
             width: 95%; max-height: 85vh;
             top: 2.5%; left: 2.5%; transform: none;

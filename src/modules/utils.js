@@ -1,4 +1,5 @@
 // Utility functions for WTR Lab Term Replacer
+import { getVersion } from "../../config/versions";
 
 export function getNovelSlug() {
   let match = window.location.pathname.match(/novel\/\d+\/([^/]+)/);
@@ -30,7 +31,9 @@ export function log(globalSettings, ...args) {
   }
 }
 
-// --- [ENHANCED v5.4] MULTI-SCRIPT COORDINATION FUNCTIONS ---
+const CURRENT_VERSION = getVersion();
+
+// --- [ENHANCED ${CURRENT_VERSION}] MULTI-SCRIPT COORDINATION FUNCTIONS ---
 
 export function detectOtherWTRScripts() {
   // Detect other WTR Lab scripts by their data attributes or specific patterns

@@ -1,8 +1,8 @@
 {
   "name": "wtr-lab-term-replacer",
-  "version": "5.4.1",
+  "version": "5.4.2",
+  "main": "WTR Lab Term Replacer-5.4.2.user.js",
   "description": "A modular, Webpack-powered version of the WTR Lab Term Replacer userscript.",
-  "main": "WTR Lab Term Replacer-5.4.1.user.js",
   "private": true,
   "scripts": {
     "dev": "webpack serve --config config/webpack.dev.js",
