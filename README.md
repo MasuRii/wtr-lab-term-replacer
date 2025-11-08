@@ -1,4 +1,4 @@
-# WTR Lab Term Replacer Webpack
+# WTR Lab Term Replacer
 
 [![Version](https://img.shields.io/badge/version-5.4.2-blue.svg)](https://github.com/MasuRii/wtr-lab-term-replacer-webpack)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
