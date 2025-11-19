@@ -1,43 +1,63 @@
 {
-  "name": "wtr-lab-term-replacer",
-  "version": "5.4.2",
-  "main": "WTR Lab Term Replacer-5.4.2.user.js",
-  "description": "A modular, Webpack-powered version of the WTR Lab Term Replacer userscript.",
-  "private": true,
-  "scripts": {
-    "dev": "webpack serve --config config/webpack.dev.js",
-    "build:performance": "node scripts/update-versions.js update && webpack --config config/webpack.performance.js",
-    "build:greasyfork": "node scripts/update-versions.js update && webpack --config config/webpack.greasyfork.js",
-    "build": "node scripts/update-versions.js update && npm run build:performance && npm run build:greasyfork",
-    "version:update": "node scripts/update-versions.js update",
-    "version:check": "node scripts/update-versions.js version",
-    "version:banner": "node scripts/update-versions.js banner",
-    "version:header": "node scripts/update-versions.js header",
-    "version:help": "node scripts/update-versions.js",
-    "version:validate": "node scripts/validate-versions.js"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/MasuRii/wtr-lab-term-replacer-webpack.git"
-  },
-  "keywords": [],
-  "author": "MasuRii",
-  "license": "MIT",
-  "type": "commonjs",
-  "bugs": {
-    "url": "https://github.com/MasuRii/wtr-lab-term-replacer-webpack/issues"
-  },
-  "homepage": "https://github.com/MasuRii/wtr-lab-term-replacer-webpack#readme",
-  "devDependencies": {
-    "@babel/core": "^7.28.5",
-    "@babel/preset-env": "^7.28.5",
-    "babel-loader": "^10.0.0",
-    "eslint": "^9.39.1",
-    "semver": "^7.7.3",
-    "webpack": "^5.102.1",
-    "webpack-cli": "^6.0.1",
-    "webpack-dev-server": "^5.2.2",
-    "webpack-merge": "^6.0.1",
-    "webpack-userscript": "^3.2.3"
-  }
+	"name": "wtr-lab-term-replacer-webpack",
+	"version": "5.4.4",
+	"description": "A modular, Webpack-powered version of the WTR Lab Term Replacer userscript.",
+	"author": "MasuRii",
+	"license": "MIT",
+	"private": true,
+	"main": "dist/main.js",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/MasuRii/wtr-lab-term-replacer-webpack.git"
+	},
+	"bugs": {
+		"url": "https://github.com/MasuRii/wtr-lab-term-replacer-webpack/issues"
+	},
+	"keywords": [
+		"term",
+		"replacement",
+		"wtr-lab",
+		"userscript",
+		"modular",
+		"webpack"
+	],
+	"files": [
+		"dist/",
+		"src/"
+	],
+	"scripts": {
+		"build": "npm run format && npm run lint:fix && npm run version:update && webpack --mode=production",
+		"build:performance": "npm run format && npm run lint:fix && webpack --config webpack.config.js --mode=production",
+		"build:greasyfork": "npm run format && npm run lint:fix && webpack --config webpack.config.js --mode=production",
+		"build:devbundle": "npm run format && npm run lint:fix && webpack --config webpack.config.js --mode=development",
+		"dev": "webpack serve --config webpack.config.js --mode=development",
+		"lint": "npm run lint:js && npm run lint:css",
+		"lint:check": "npm run lint:js && npm run lint:css",
+		"lint:fix": "npm run lint:js:fix && npm run lint:css:fix",
+		"lint:js": "eslint src/ --ext .js --max-warnings 0",
+		"lint:js:fix": "eslint src/ --ext .js --fix",
+		"lint:css": "echo \"No CSS files found in project\"",
+		"lint:css:fix": "echo \"No CSS files found in project\"",
+		"format": "prettier --write \"src/**/*.{js,css}\"",
+		"version:update": "node scripts/update-versions.js update",
+		"version:check": "node scripts/update-versions.js version",
+		"version:banner": "node scripts/update-versions.js banner",
+		"version:header": "node scripts/update-versions.js header"
+	},
+	"devDependencies": {
+		"css-loader": "^7.1.2",
+		"eslint": "^9.39.1",
+		"eslint-config-prettier": "^10.1.8",
+		"eslint-plugin-import": "^2.32.0",
+		"eslint-plugin-prettier": "^5.5.4",
+		"prettier": "^3.6.2",
+		"style-loader": "^4.0.0",
+		"stylelint": "^16.25.0",
+		"stylelint-prettier": "^5.0.3",
+		"stylelint-config-standard": "^39.0.1",
+		"webpack": "^5.102.1",
+		"webpack-cli": "^6.0.1",
+		"webpack-dev-server": "^5.2.2",
+		"webpack-userscript": "^3.2.3"
+	}
 }

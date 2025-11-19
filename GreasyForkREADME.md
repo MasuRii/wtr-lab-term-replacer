@@ -1,6 +1,6 @@
-# WTR Lab Term Replacer v5.4.2
+# WTR Lab Term Replacer v5.4.4
 
-![Version](https://img.shields.io/badge/version-5.4.2-blue.svg)
+![Version](https://img.shields.io/badge/version-5.4.4-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 ![Platform](https://img.shields.io/badge/platform-WTR--Lab.com-lightgrey.svg)
 
@@ -30,7 +30,7 @@
 
 ### Step 2: Install the Script
 
-1. Click [here to install WTR Lab Term Replacer](WTR%20Lab%20Term%20Replacer-5.4.2.user.js) (this will open the script in Tampermonkey)
+1. Click [here to install WTR Lab Term Replacer](WTR%20Lab%20Term%20Replacer-5.4.4.user.js) (this will open the script in Tampermonkey)
 2. Click **"Install"** when prompted
 3. The script is now active and ready to use!
 
