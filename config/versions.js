@@ -45,5 +45,6 @@ module.exports = {
   getBuildTime: () => new Date().toISOString(),
   getBuildDate: () => VERSION_INFO.BUILD_DATE,
   isProduction: () => VERSION_INFO.BUILD_ENV === "production",
-  isDevelopment: () => VERSION_INFO.BUILD_ENV === "development"
+  isDevelopment: () => VERSION_INFO.BUILD_ENV === "development",
+  getDisplayVersion: () => VERSION_INFO.DISPLAY
 };

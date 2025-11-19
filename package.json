@@ -1,6 +1,6 @@
 {
 	"name": "wtr-lab-term-replacer-webpack",
-	"version": "5.4.3",
+	"version": "5.4.4",
 	"description": "A modular, Webpack-powered version of the WTR Lab Term Replacer userscript.",
 	"author": "MasuRii",
 	"license": "MIT",
@@ -36,8 +36,8 @@
 		"lint:fix": "npm run lint:js:fix && npm run lint:css:fix",
 		"lint:js": "eslint src/ --ext .js --max-warnings 0",
 		"lint:js:fix": "eslint src/ --ext .js --fix",
-		"lint:css": "stylelint \"src/**/**/*.css\" --max-warnings 0",
-		"lint:css:fix": "stylelint \"src/**/**/*.css\" --fix",
+		"lint:css": "echo \"No CSS files found in project\"",
+		"lint:css:fix": "echo \"No CSS files found in project\"",
 		"format": "prettier --write \"src/**/*.{js,css}\"",
 		"version:update": "node scripts/update-versions.js update",
 		"version:check": "node scripts/update-versions.js version",

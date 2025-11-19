@@ -1,5 +1,5 @@
 // Main entry point for WTR Lab Term Replacer
-import { createUI } from "./modules/ui"
+import { createUI, showUIPanel } from "./modules/ui"
 import { loadData, loadGlobalSettings } from "./modules/storage"
 import { waitForInitialContent } from "./modules/observer"
 import { setNovelSlug, state } from "./modules/state"
@@ -89,8 +89,8 @@ function setupEnhancedNavigationHandling() {
 
 // Enhanced disable functionality that works reliably
 function addDisableAllRobustness() {
-	// Get the original handleDisableToggle from handlers and wrap it
-	Handlers.handleDisableToggle = async function (e) {
+	// Enhanced disable functionality with proper error handling
+	const handleDisableToggleRobust = async function (e) {
 		const wasDisabled = state.settings.isDisabled
 		const shouldDisable = e.target.checked
 
@@ -134,6 +134,18 @@ function addDisableAllRobustness() {
 		}
 	}
 
+	// Replace the existing event listener with our robust version
+	const uiContainer = document.querySelector(".wtr-replacer-ui")
+	if (uiContainer) {
+		const disableCheckbox = uiContainer.querySelector("#wtr-disable-all")
+		if (disableCheckbox) {
+			// Remove existing listener and add our enhanced one
+			const newDisableCheckbox = disableCheckbox.cloneNode(true)
+			disableCheckbox.parentNode.replaceChild(newDisableCheckbox, disableCheckbox)
+			newDisableCheckbox.addEventListener("change", handleDisableToggleRobust)
+		}
+	}
+
 	log(state.globalSettings, "WTR Term Replacer: Enhanced disable functionality activated")
 }
 
@@ -174,7 +186,7 @@ async function main() {
 	createUI() // This will also set up the initial event listeners
 
 	log(state.globalSettings, "WTR Term Replacer: Registering menu commands...")
-	GM_registerMenuCommand("Term Replacer Settings", Handlers.showUIPanel)
+	GM_registerMenuCommand("Term Replacer Settings", showUIPanel)
 	GM_registerMenuCommand("Toggle Logging", Handlers.toggleLogging)
 
 	log(state.globalSettings, "WTR Term Replacer: Starting initial content detection...")

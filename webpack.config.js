@@ -2,6 +2,7 @@
 // Multi-build configuration for WTR Lab Term Replacer
 
 const path = require("path");
+const webpack = require("webpack");
 const { UserscriptPlugin } = require("webpack-userscript");
 const pkg = require("./package.json");
 const { VERSION_INFO, getVersion } = require("./config/versions.js");
@@ -42,6 +43,7 @@ const buildTime = new Date().toISOString().replace(/[:-]|\.\d{3}/g, "").slice(0,
 const performanceConfig = {
   name: "performance",
   mode: "production",
+  target: "web",
   entry: "./src/index.js",
   output: {
     path: path.resolve(__dirname, "dist"),
@@ -67,6 +69,9 @@ const performanceConfig = {
     },
   },
   plugins: [
+    new webpack.DefinePlugin({
+      process: '({ env: {} })',
+    }),
     new UserscriptPlugin({
       headers: {
         ...COMMON_META,
@@ -84,6 +89,7 @@ const performanceConfig = {
 const greasyforkConfig = {
   name: "greasyfork",
   mode: "production",
+  target: "web",
   entry: "./src/index.js",
   output: {
     path: path.resolve(__dirname, "dist"),
@@ -106,6 +112,9 @@ const greasyforkConfig = {
     concatenateModules: true,
   },
   plugins: [
+    new webpack.DefinePlugin({
+      process: '({ env: {} })',
+    }),
     new UserscriptPlugin({
       headers: {
         ...COMMON_META,
@@ -122,6 +131,7 @@ const greasyforkConfig = {
 const devConfig = {
   name: "dev",
   mode: "development",
+  target: "web",
   entry: "./src/index.js",
   output: {
     path: path.resolve(__dirname, "dist"),
@@ -160,6 +170,9 @@ const devConfig = {
     },
   },
   plugins: [
+    new webpack.DefinePlugin({
+      process: '({ env: {} })',
+    }),
     new UserscriptPlugin({
       headers: {
         ...COMMON_META,

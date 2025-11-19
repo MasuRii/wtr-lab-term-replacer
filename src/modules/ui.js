@@ -1,7 +1,6 @@
-// UI creation and manipulation for WTR Lab Term Replacer
-// Hot reload test - development workflow verification
 import { state } from "./state"
 import * as Handlers from "./handlers"
+import { exitDupMode, changeDupGroup } from "./duplicates"
 import { log } from "./utils"
 import { ITEMS_PER_PAGE } from "./config"
 import { getDisplayVersion } from "../../config/versions"
@@ -375,9 +374,9 @@ export function createUI() {
 	})
 	uiContainer.querySelector("#wtr-file-input").addEventListener("change", Handlers.handleFileImport)
 	uiContainer.querySelector("#wtr-find-duplicates-btn").addEventListener("click", Handlers.handleFindDuplicates)
-	uiContainer.querySelector("#wtr-prev-dup-btn").addEventListener("click", () => Handlers.changeDupGroup(-1))
-	uiContainer.querySelector("#wtr-next-dup-btn").addEventListener("click", () => Handlers.changeDupGroup(1))
-	uiContainer.querySelector("#wtr-exit-dup-btn").addEventListener("click", Handlers.exitDupMode)
+	uiContainer.querySelector("#wtr-prev-dup-btn").addEventListener("click", () => changeDupGroup(-1))
+	uiContainer.querySelector("#wtr-next-dup-btn").addEventListener("click", () => changeDupGroup(1))
+	uiContainer.querySelector("#wtr-exit-dup-btn").addEventListener("click", exitDupMode)
 
 	// Add scroll event listener to save term list location
 	const contentArea = uiContainer.querySelector(".wtr-replacer-content")

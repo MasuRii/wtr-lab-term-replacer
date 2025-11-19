@@ -7,10 +7,8 @@ import {
 	loadData,
 	processAndSaveTerms,
 	processAndSaveSettings,
-	getTermKey,
 	saveGlobalSettings,
 	saveTermListLocation,
-	loadTermListLocation,
 } from "./storage"
 
 // Re-export saveTermListLocation for UI module
@@ -25,8 +23,8 @@ import {
 	switchTab,
 	clearTermList,
 } from "./ui"
-import { reprocessCurrentChapter, processVisibleChapter } from "./observer"
-import { computeDupGroups, exitDupMode, changeDupGroup, updateDupModeAfterChange } from "./duplicates"
+import { reprocessCurrentChapter } from "./observer"
+import { computeDupGroups, updateDupModeAfterChange } from "./duplicates"
 import { log } from "./utils"
 import { performReplacements, revertAllReplacements } from "./engine"
 import { getVersion } from "../../config/versions"

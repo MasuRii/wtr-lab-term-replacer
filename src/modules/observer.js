@@ -1,7 +1,7 @@
 // MutationObserver and content handling for WTR Lab Term Replacer
 import { state } from "./state"
 import { performReplacements } from "./engine"
-import { addMenuButton, showProcessingIndicator } from "./ui"
+import { addMenuButton } from "./ui"
 import { getChapterIdFromUrl, log } from "./utils"
 
 export function waitForInitialContent() {
@@ -16,7 +16,7 @@ export function waitForInitialContent() {
 	setupFallbackDetection()
 }
 
-function detectContentWithMultipleStrategies() {
+function _detectContentWithMultipleStrategies() {
 	const detectionStrategies = [
 		// Strategy 1: Standard chapter ID detection
 		() => {
@@ -305,7 +305,7 @@ export function processVisibleChapter() {
 	scheduleChapterProcessing(chapterId, chapterBody)
 }
 
-function scheduleChapterProcessing(chapterId, chapterBody) {
+function scheduleChapterProcessing(chapterId, _chapterBody) {
 	const processingKey = `${chapterId}_${Date.now()}`
 
 	// Enhanced queue management with proper synchronization

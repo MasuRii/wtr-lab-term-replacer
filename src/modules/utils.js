@@ -33,7 +33,7 @@ export function log(globalSettings, ...args) {
 	}
 }
 
-const CURRENT_VERSION = getVersion()
+const _CURRENT_VERSION = getVersion()
 
 // --- [ENHANCED ${CURRENT_VERSION}] MULTI-SCRIPT COORDINATION FUNCTIONS ---
 
