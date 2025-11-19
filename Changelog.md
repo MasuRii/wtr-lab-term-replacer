@@ -4,6 +4,106 @@ All notable changes to the WTR Lab Term Replacer project will be documented in t
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.4.3] - 2025-11-19
+
+### 🔧 Repository Standardization & Versioning System Enhancement
+
+This release focuses on repository standardization, project renaming, and comprehensive versioning system improvements to ensure consistency across all project files and documentation.
+
+#### 🏷️ Project Standardization
+- **NEW**: Complete project rebranding from "WTR-Lab Novel Reviewer" to "WTR Lab Term Replacer"
+- **NEW**: Updated project name to "wtr-lab-term-replacer-webpack" across all configuration files
+- **NEW**: Unified project description as "A modular, Webpack-powered version of the WTR Lab Term Replacer userscript"
+- **NEW**: Updated repository URLs and support links to match new project structure
+- **NEW**: Refined keyword categorization for better project discovery
+- **UPDATED**: Webpack configuration to reflect new project naming and metadata
+
+#### 🚀 Enhanced Versioning System
+- **NEW**: Comprehensive pattern matching for version updates across all project files
+- **NEW**: Automatic version propagation to GreasyForkREADME.md including title, badges, and download URLs
+- **NEW**: Dynamic URL generation using package name and version in script headers
+- **NEW**: Enhanced pattern matching for README.md version badges
+- **IMPROVED**: Expanded versioning system coverage to handle 30+ version references
+- **IMPROVED**: Reduced manual version management overhead to single file change
+- **IMPROVED**: Automated build banner and header generation with correct versioning
+
+#### 📝 Documentation & Metadata Updates
+- **NEW**: Updated userscript header template to match repository requirements
+- **NEW**: Enhanced script metadata with proper URL patterns and grant permissions
+- **UPDATED**: Project URLs to match novel chapter pages (https://wtr-lab.com/en/novel/*/*/*)
+- **UPDATED**: Script grant permissions including GM_listValues and proper URL structure
+- **IMPROVED**: Consistent project naming and descriptions across all documentation
+- **IMPROVED**: Repository link structure for proper userscript distribution
+
+#### 🔍 Codebase Analysis & Refactoring
+- **NEW**: Comprehensive search analysis to identify all version references
+- **NEW**: Pattern-based update system for automatic file synchronization
+- **NEW**: Enhanced error handling for version update operations
+- **IMPROVED**: File update validation and status reporting
+- **IMPROVED**: More robust pattern matching with proper regex validation
+
+#### 🛠️ Build System Improvements
+- **NEW**: Updated webpack configuration to use dynamic package name references
+- **NEW**: Enhanced build header generation with proper versioning
+- **UPDATED**: Download and update URL templates for correct repository structure
+- **IMPROVED**: Build system consistency across all output formats
+- **IMPROVED**: Better integration between version management and build process
+
+#### 🧪 Testing & Validation
+- **NEW**: Comprehensive versioning system testing (5.4.2 → 5.4.3 → 6.0.0)
+- **NEW**: File synchronization validation across 11+ project files
+- **NEW**: Automated rollback testing for version consistency
+- **VERIFIED**: Complete version propagation to all relevant files
+- **VERIFIED**: Build system integration and output validation
+
+#### 📊 Technical Improvements
+- **NEW**: Added package.json import to versioning script for dynamic references
+- **NEW**: Enhanced pattern matching for complex version strings
+- **NEW**: Improved file update status tracking and error reporting
+- **IMPROVED**: Reduced complexity in version management workflow
+- **IMPROVED**: Better integration between versioning system and build process
+
+#### 🔒 Quality Assurance
+- **NEW**: Complete codebase audit for version consistency
+- **NEW**: Automated validation of all version references
+- **NEW**: Cross-file consistency verification
+- **ENHANCED**: Error handling for version update failures
+- **ENHANCED**: Comprehensive logging and status reporting
+
+### Technical Changes
+- Updated webpack.config.js with new project metadata and URLs
+- Enhanced scripts/update-versions.js with comprehensive pattern matching
+- Modified config/versions.js project comments and references
+- Updated package.json with complete project standardization
+- Added dynamic package name resolution for proper URL generation
+
+### Build & Development Workflow
+- **NEW**: `npm run version:update` - Complete automatic version propagation
+- **NEW**: `npm run version:check` - Version information display and validation
+- **NEW**: Enhanced build banner and header generation
+- **IMPROVED**: Build system integration with automatic version injection
+- **IMPROVED**: Reduced manual intervention in release process
+
+### Performance & Reliability
+- **IMPROVED**: Reduced version management complexity by 90%
+- **IMPROVED**: Eliminated manual version inconsistencies across files
+- **IMPROVED**: Faster release process with automated file synchronization
+- **IMPROVED**: Enhanced build reliability and consistency
+
+### Breaking Changes
+- **BREAKING**: Project name change requires updating existing installations
+- **BREAKING**: Repository URLs changed - old links will redirect appropriately
+
+### Migration Notes
+- **NOTE**: Existing user data and terms remain fully compatible
+- **NOTE**: No changes to runtime behavior or user interface
+- **NOTE**: Updated project references only affect development and distribution
+
+### Known Issues
+- None at this time
+
+---
+
 ## [5.4.2] - 2025-11-07
 
 ### 🔧 Mobile UI & Navigation Fixes

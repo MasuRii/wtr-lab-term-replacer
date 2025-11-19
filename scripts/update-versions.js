@@ -1,272 +1,226 @@
 #!/usr/bin/env node
+// scripts/update-versions.js
+// Automated version synchronization for WTR Lab Term Replacer
+
+const fs = require("fs")
+const path = require("path")
+const { VERSION_INFO } = require("../config/versions.js")
+const pkg = require("../package.json")
+
+const FILES_TO_UPDATE = [
+	{
+		file: "package.json",
+		patterns: [{ search: /"version":\s*"[^"]*"/g, replace: `"version": "${VERSION_INFO.NPM}"` }],
+	},
+	{
+		file: "README.md",
+		patterns: [
+			{
+				search: /!\[Version\]\(https:\/\/img\.shields\.io\/badge\/version-[^)]+\)/g,
+				replace: `![Version](https://img.shields.io/badge/version-${VERSION_INFO.BADGE}-blue.svg)`,
+			},
+		],
+	},
+	{
+		file: "GreasyForkREADME.md",
+		patterns: [
+			{
+				search: /^# WTR Lab Term Replacer v\d+\.\d+\.\d+/gm,
+				replace: `# WTR Lab Term Replacer v${VERSION_INFO.SEMANTIC}`,
+			},
+			{
+				search: /!\[Version\]\(https:\/\/img\.shields\.io\/badge\/version-[^)]+\)/g,
+				replace: `![Version](https://img.shields.io/badge/version-${VERSION_INFO.SEMANTIC}-blue.svg)`,
+			},
+			{
+				search: /\(WTR%20Lab%20Term%20Replacer-\d+\.\d+\.\d+\.user\.js\)/g,
+				replace: `(WTR%20Lab%20Term%20Replacer-${VERSION_INFO.SEMANTIC}.user.js)`,
+			},
+		],
+	},
+]
+
+const command = process.argv[2] || "update"
 
 /**
- * Build-time version injection script
- * This script reads the centralized version and updates all necessary files
+ * Safely update a file using explicit patterns.
+ * Returns:
+ * - true if any changes were written
+ * - false if no changes were needed
+ * - throws on hard failure (I/O or unexpected error)
  */
+function updateFile(filePath, patterns) {
+	if (!fs.existsSync(filePath)) {
+		console.log(`⚠️  File not found: ${filePath}`)
+		return false
+	}
 
-const fs = require('fs');
-const path = require('path');
-const { versionManager, VERSION_INFO } = require('../config/versions.js');
+	try {
+		const content = fs.readFileSync(filePath, "utf8")
+		let updatedContent = content
+		let hasChanges = false
 
-class BuildVersionInjector {
-  constructor() {
-    this.versionInfo = versionManager.getAllVersionInfo();
-    this.rootDir = path.resolve(__dirname, '..');
-  }
+		patterns.forEach(({ search, replace }) => {
+			if (search.test(updatedContent)) {
+				updatedContent = updatedContent.replace(search, replace)
+				hasChanges = true
+			}
+		})
 
-  /**
-   * Update package.json with current version
-   */
-  updatePackageJson() {
-    const packagePath = path.join(this.rootDir, 'package.json');
-    
-    try {
-      const packageData = JSON.parse(fs.readFileSync(packagePath, 'utf8'));
-      const oldVersion = packageData.version;
-      
-      // Update version
-      packageData.version = this.versionInfo.NPM;
-      
-      // Update main field filename if it contains version
-      if (packageData.main && packageData.main.includes('WTR Lab Term Replacer')) {
-        const fileName = packageData.main.split('-')[0];
-        packageData.main = `${fileName}-${this.versionInfo.NPM}.user.js`;
-      }
-      
-      // Write updated package.json
-      fs.writeFileSync(packagePath, JSON.stringify(packageData, null, 2));
-      
-      console.log(`✅ Updated package.json: ${oldVersion} → ${this.versionInfo.NPM}`);
-      return true;
-    } catch (error) {
-      console.error(`❌ Failed to update package.json:`, error.message);
-      return false;
-    }
-  }
+		if (hasChanges) {
+			fs.writeFileSync(filePath, updatedContent, "utf8")
+			console.log(`✅ Updated ${filePath}`)
+			return true
+		}
 
-  /**
-   * Update README.md badge version
-   */
-  updateReadme() {
-    const readmePath = path.join(this.rootDir, 'README.md');
-    
-    try {
-      let readmeContent = fs.readFileSync(readmePath, 'utf8');
-      const oldVersion = readmeContent.match(/version-([\d.]+)-blue\.svg/);
-      
-      if (oldVersion) {
-        readmeContent = readmeContent.replace(
-          /version-[\d.]+-blue\.svg/,
-          `version-${this.versionInfo.BADGE}-blue.svg`
-        );
-        
-        fs.writeFileSync(readmePath, readmeContent);
-        console.log(`✅ Updated README.md badge: ${oldVersion[1]} → ${this.versionInfo.BADGE}`);
-        return true;
-      } else {
-        console.log('⚠️  No version badge found in README.md');
-        return false;
-      }
-    } catch (error) {
-      console.error(`❌ Failed to update README.md:`, error.message);
-      return false;
-    }
-  }
+		console.log(`ℹ️  No changes needed for ${filePath}`)
+		return false
+	} catch (error) {
+		// Treat as hard failure so build can surface the problem
+		console.error(`❌ Error updating ${filePath}:`, error.message)
+		throw error
+	}
+}
 
-  /**
-   * Update GreasyForkREADME.md version references
-   */
-  updateGreasyForkReadme() {
-    const greasyForkPath = path.join(this.rootDir, 'GreasyForkREADME.md');
-    
-    try {
-      let content = fs.readFileSync(greasyForkPath, 'utf8');
-      let updated = false;
-      
-      // Update title version
-      const titleMatch = content.match(/# WTR Lab Term Replacer v([\d.]+)/);
-      if (titleMatch) {
-        content = content.replace(
-          /# WTR Lab Term Replacer v[\d.]+/,
-          `# WTR Lab Term Replacer ${this.versionInfo.DISPLAY}`
-        );
-        console.log(`✅ Updated GreasyForkREADME.md title: v${titleMatch[1]} → ${this.versionInfo.DISPLAY}`);
-        updated = true;
-      }
-      
-      // Update badge version
-      const badgeMatch = content.match(/version-([\d.]+)-blue\.svg/);
-      if (badgeMatch) {
-        content = content.replace(
-          /version-[\d.]+-blue\.svg/,
-          `version-${this.versionInfo.BADGE}-blue.svg`
-        );
-        console.log(`✅ Updated GreasyForkREADME.md badge: ${badgeMatch[1]} → ${this.versionInfo.BADGE}`);
-        updated = true;
-      }
-      
-      // Update installation link version
-      const installMatch = content.match(/WTR%20Lab%20Term%20Replacer-([\d.]+)\.user\.js/);
-      if (installMatch) {
-        content = content.replace(
-          /WTR%20Lab%20Term%20Replacer-[\d.]+\.user\.js/,
-          `WTR%20Lab%20Term%20Replacer-${this.versionInfo.NPM}.user.js`
-        );
-        console.log(`✅ Updated GreasyForkREADME.md installation link: ${installMatch[1]} → ${this.versionInfo.NPM}`);
-        updated = true;
-      }
-      
-      if (updated) {
-        fs.writeFileSync(greasyForkPath, content);
-        return true;
-      } else {
-        console.log('⚠️  No version references found in GreasyForkREADME.md');
-        return false;
-      }
-    } catch (error) {
-      console.error(`❌ Failed to update GreasyForkREADME.md:`, error.message);
-      return false;
-    }
-  }
-
-  /**
-   * Generate banner for build output files
-   */
-  generateBanner() {
-    const currentDate = new Date().toISOString().split('T')[0];
-    
-    return `/**
- * WTR Lab Term Replacer - ${this.versionInfo.DISPLAY}
- * Generated on ${currentDate}
- * 
+function generateBanner() {
+	const banner = `/**
+ * WTR Lab Term Replacer v${VERSION_INFO.SEMANTIC}
+ * Built: ${VERSION_INFO.BUILD_DATE} (${VERSION_INFO.BUILD_ENV})
+ *
  * A modular, Webpack-powered version of the WTR Lab Term Replacer userscript.
- * For updates and documentation, visit the project repository.
- */`;
-  }
+ *
+ * @version ${VERSION_INFO.SEMANTIC}
+ * @build ${VERSION_INFO.BUILD_ENV}
+ * @date ${VERSION_INFO.BUILD_DATE}
+ */`
 
-  /**
-   * Generate userscript header
-   */
-  generateUserscriptHeader(target = 'default') {
-    const version = versionManager.getVersionForTarget(target);
-    const currentDate = new Date().toISOString().split('T')[0];
-    
-    return `// ==UserScript==
+	const bannerPath = path.join(__dirname, "../src/banner.js")
+	fs.writeFileSync(bannerPath, banner, "utf8")
+	console.log(`📝 Generated build banner: ${bannerPath}`)
+	return bannerPath
+}
+
+function generateHeader() {
+const header = `// ==UserScript==
 // @name         WTR Lab Term Replacer
 // @description  A modular, Webpack-powered version of the WTR Lab Term Replacer userscript.
-// @version      ${version}
+// @version      ${VERSION_INFO.SEMANTIC}
 // @author       MasuRii
-// @match        *://*/*
-// @match        *://*/*/*
-// @match        *://*/*/*/*
-// @grant        none
-// @run-at       document-start
-// @homepageURL  https://github.com/MasuRii/wtr-lab-term-replacer-webpack
+// @homepage     https://github.com/MasuRii/wtr-lab-term-replacer-webpack#readme
 // @supportURL   https://github.com/MasuRii/wtr-lab-term-replacer-webpack/issues
-// @updateURL    https://raw.githubusercontent.com/MasuRii/wtr-lab-term-replacer-webpack/main/dist/wtr-lab-term-replacer.${target}.user.js
-// @downloadURL  https://raw.githubusercontent.com/MasuRii/wtr-lab-term-replacer-webpack/main/dist/wtr-lab-term-replacer.${target}.user.js
-// @namespace    masurii.userscripts
+// @match        https://wtr-lab.com/en/novel/*/*/*
+// @downloadURL  https://github.com/MasuRii/wtr-lab-term-replacer-webpack#readme/raw/main/dist/${pkg.name}.${VERSION_INFO.SEMANTIC}.performance.user.js
+// @grant        GM_setValue
+// @grant        GM_getValue
+// @grant        GM_listValues
+// @grant        GM_addStyle
+// @grant        GM_registerMenuCommand
+// @icon         https://www.google.com/s2/favicons?sz=64&domain=wtr-lab.com
+// @license      MIT
+// @namespace    http://tampermonkey.net/
+// @run-at       document-idle
+// @updateURL    https://github.com/MasuRii/wtr-lab-term-replacer-webpack#readme/raw/main/dist/${pkg.name}.${VERSION_INFO.SEMANTIC}.performance.meta.js
 // ==/UserScript==
 
-/**
- * WTR Lab Term Replacer v${version}
- * Generated on ${currentDate}
- * 
- * A modular, Webpack-powered version of the WTR Lab Term Replacer userscript.
- * For updates and documentation, visit: https://github.com/MasuRii/wtr-lab-term-replacer-webpack
- * 
- * This userscript replaces academic terms with their industry counterparts.
- * It provides a comprehensive mapping system for better understanding
- * of academic vs industry terminology.
- */
-`;
-  }
+`
 
-  /**
-   * Generate meta file content
-   */
-  generateMetaContent(target = 'default') {
-    const version = versionManager.getVersionForTarget(target);
-    
-    return `// @description A modular, Webpack-powered version of the WTR Lab Term Replacer userscript.
-// @version ${version}
-// @author MasuRii
-// @namespace masurii.userscripts`;
-  }
-
-  /**
-   * Run all update operations
-   */
-  updateAll() {
-    console.log('🚀 Starting version update process...');
-    console.log(`📦 Current version: ${this.versionInfo.DISPLAY}`);
-    console.log('');
-    
-    let success = true;
-    
-    // Update source files
-    success &= this.updatePackageJson();
-    success &= this.updateReadme();
-    success &= this.updateGreasyForkReadme();
-    
-    if (success) {
-      console.log('');
-      console.log('✅ All version updates completed successfully!');
-      console.log('📝 Remember to update CHANGELOG.md manually if needed');
-      console.log('🚀 Ready to build!');
-    } else {
-      console.log('');
-      console.log('❌ Some updates failed. Please check the errors above.');
-      process.exit(1);
-    }
-  }
-
-  /**
-   * Get version for webpack
-   */
-  getVersionForWebpack() {
-    return {
-      semantic: this.versionInfo.SEMANTIC,
-      display: this.versionInfo.DISPLAY,
-      npm: this.versionInfo.NPM,
-      greasyfork: this.versionInfo.GREASYFORK,
-      major: this.versionInfo.META.MAJOR,
-      minor: this.versionInfo.META.MINOR,
-      patch: this.versionInfo.META.PATCH
-    };
-  }
+const headerPath = path.join(__dirname, "../src/header.js")
+fs.writeFileSync(headerPath, header, "utf8")
+console.log(`📋 Generated script header: ${headerPath}`)
+return headerPath
 }
 
-// CLI interface
-if (require.main === module) {
-  const injector = new BuildVersionInjector();
-  
-  const args = process.argv.slice(2);
-  const command = args[0] || 'update';
-  
-  switch (command) {
-    case 'update':
-      injector.updateAll();
-      break;
-    case 'version':
-      console.log(injector.getVersionForWebpack());
-      break;
-    case 'banner':
-      console.log(injector.generateBanner());
-      break;
-    case 'header':
-      const target = args[1] || 'default';
-      console.log(injector.generateUserscriptHeader(target));
-      break;
-    default:
-      console.log('Usage: node scripts/update-versions.js [command]');
-      console.log('Commands:');
-      console.log('  update  - Update all version references (default)');
-      console.log('  version - Get version info for webpack');
-      console.log('  banner  - Generate build banner');
-      console.log('  header  - Generate userscript header');
-  }
+function checkVersion() {
+	console.log("📋 Current Version Information:")
+	console.log(`   Semantic Version: ${VERSION_INFO.SEMANTIC}`)
+	console.log(`   Display Version: ${VERSION_INFO.DISPLAY}`)
+	console.log(`   Build Environment: ${VERSION_INFO.BUILD_ENV}`)
+	console.log(`   Build Date: ${VERSION_INFO.BUILD_DATE}`)
+	console.log(`   GreasyFork Version: ${VERSION_INFO.GREASYFORK}`)
+	console.log(`   NPM Version: ${VERSION_INFO.NPM}`)
+	console.log(`   Badge Version: ${VERSION_INFO.BADGE}`)
+	console.log(`   Changelog Version: ${VERSION_INFO.CHANGELOG}`)
 }
 
-module.exports = BuildVersionInjector;
+// Main execution
+console.log("🔄 WTR Lab Term Replacer - Version Management")
+console.log("=".repeat(55))
+
+switch (command) {
+	case "update":
+		console.log("🔄 Updating versioned files...")
+
+		let updatedFiles = 0
+		let hadHardFailure = false
+
+		// 1) Update all configured files (package.json, README, etc.)
+		FILES_TO_UPDATE.forEach(({ file, patterns }) => {
+			const filePath = path.join(__dirname, "..", file)
+			try {
+				if (updateFile(filePath, patterns)) {
+					updatedFiles++
+				}
+			} catch (error) {
+				hadHardFailure = true
+			}
+		})
+
+		// 2) Generate banner and header directly from VERSION_INFO
+		try {
+			generateBanner()
+			updatedFiles++
+		} catch (error) {
+			console.error("❌ Failed to generate banner.js:", error.message)
+			hadHardFailure = true
+		}
+
+		try {
+			generateHeader()
+			updatedFiles++
+		} catch (error) {
+			console.error("❌ Failed to generate header.js:", error.message)
+			hadHardFailure = true
+		}
+
+		if (hadHardFailure) {
+			console.error("❌ Version update failed. Build aborted due to version sync errors.")
+			process.exit(1)
+		}
+
+		console.log(`✅ Completed! Updated ${updatedFiles} items (including banner.js and header.js).`)
+		break
+
+	case "check":
+		checkVersion()
+		break
+
+	case "banner":
+		try {
+			generateBanner()
+		} catch (error) {
+			console.error("❌ Failed to generate banner.js:", error.message)
+			process.exit(1)
+		}
+		break
+
+	case "header":
+		try {
+			generateHeader()
+		} catch (error) {
+			console.error("❌ Failed to generate header.js:", error.message)
+			process.exit(1)
+		}
+		break
+
+	default:
+		console.log("❓ Unknown command:", command)
+		console.log("📖 Available commands:")
+		console.log("   update  - Update all versioned files (default)")
+		console.log("   check   - Display current version information")
+		console.log("   banner  - Generate build banner only")
+		console.log("   header  - Generate script header only")
+		process.exit(1)
+}
+
+// Success exit
+process.exit(0)

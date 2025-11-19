@@ -1,10 +1,10 @@
 // UI creation and manipulation for WTR Lab Term Replacer
 // Hot reload test - development workflow verification
-import { state } from "./state";
-import * as Handlers from "./handlers";
-import { log } from "./utils";
-import { ITEMS_PER_PAGE } from "./config";
-import { getDisplayVersion } from "../../config/versions";
+import { state } from "./state"
+import * as Handlers from "./handlers"
+import { log } from "./utils"
+import { ITEMS_PER_PAGE } from "./config"
+import { getDisplayVersion } from "../../config/versions"
 
 const UI_HTML = `
     <div class="wtr-replacer-header">
@@ -82,7 +82,7 @@ const UI_HTML = `
             </div>
         </div>
     </div>
-`;
+`
 
 const UI_CSS = `
     /* --- Google Material Symbols --- */
@@ -334,445 +334,467 @@ const UI_CSS = `
         .wtr-replacer-term-list { order: 2; }
         .wtr-pagination-controls { order: 3; margin-top: 1rem; margin-bottom: 0; }
     }
-`;
+`
 
 export function createUI() {
-  if (document.querySelector('.wtr-replacer-ui')) return;
-  GM_addStyle(UI_CSS);
+	if (document.querySelector(".wtr-replacer-ui")) {
+		return
+	}
+	GM_addStyle(UI_CSS)
 
-  const uiContainer = document.createElement('div');
-  uiContainer.className = 'wtr-replacer-ui';
-  uiContainer.innerHTML = UI_HTML;
-  document.body.appendChild(uiContainer);
-  
-  const processingOverlay = document.createElement('div');
-  processingOverlay.className = 'wtr-processing-overlay';
-  processingOverlay.textContent = 'Processing...';
-  document.body.appendChild(processingOverlay);
+	const uiContainer = document.createElement("div")
+	uiContainer.className = "wtr-replacer-ui"
+	uiContainer.innerHTML = UI_HTML
+	document.body.appendChild(uiContainer)
 
-  // Event Listeners
-  uiContainer.querySelector('.wtr-replacer-close-btn').addEventListener('click', Handlers.hideUIPanel);
-  uiContainer.querySelector('#wtr-disable-all').addEventListener('change', Handlers.handleDisableToggle);
-  uiContainer.querySelector('#wtr-save-btn').addEventListener('click', Handlers.handleSaveTerm);
-  uiContainer.querySelector('#wtr-delete-selected-btn').addEventListener('click', Handlers.handleDeleteSelected);
-  uiContainer.querySelector('#wtr-search-bar').addEventListener('input', Handlers.handleSearch);
-  uiContainer.querySelector('.wtr-replacer-term-list').addEventListener('click', Handlers.handleListInteraction);
-  uiContainer.querySelectorAll('.wtr-replacer-tab-btn').forEach(btn => btn.addEventListener('click', Handlers.handleTabSwitch));
-  uiContainer.querySelector('#wtr-export-novel-btn').addEventListener('click', Handlers.handleExportNovel);
-  uiContainer.querySelector('#wtr-export-all-btn').addEventListener('click', Handlers.handleExportAll);
-  uiContainer.querySelector('#wtr-export-combined-btn').addEventListener('click', Handlers.handleExportCombined);
-  uiContainer.querySelector('#wtr-import-novel-btn').addEventListener('click', () => {
-    state.importType = 'novel';
-    document.getElementById('wtr-file-input').click();
-  });
-  uiContainer.querySelector('#wtr-import-all-btn').addEventListener('click', () => {
-    state.importType = 'all';
-    document.getElementById('wtr-file-input').click();
-  });
-  uiContainer.querySelector('#wtr-file-input').addEventListener('change', Handlers.handleFileImport);
-  uiContainer.querySelector('#wtr-find-duplicates-btn').addEventListener('click', Handlers.handleFindDuplicates);
-  uiContainer.querySelector('#wtr-prev-dup-btn').addEventListener('click', () => Handlers.changeDupGroup(-1));
-  uiContainer.querySelector('#wtr-next-dup-btn').addEventListener('click', () => Handlers.changeDupGroup(1));
-  uiContainer.querySelector('#wtr-exit-dup-btn').addEventListener('click', Handlers.exitDupMode);
+	const processingOverlay = document.createElement("div")
+	processingOverlay.className = "wtr-processing-overlay"
+	processingOverlay.textContent = "Processing..."
+	document.body.appendChild(processingOverlay)
 
-  // Add scroll event listener to save term list location
-  const contentArea = uiContainer.querySelector('.wtr-replacer-content');
-  if (contentArea) {
-    let scrollTimeout;
-    contentArea.addEventListener('scroll', () => {
-      clearTimeout(scrollTimeout);
-      scrollTimeout = setTimeout(() => {
-        if (document.querySelector('.wtr-replacer-tab-btn.active').dataset.tab === 'terms') {
-          Handlers.saveTermListLocation();
-        }
-      }, 1000); // Save after 1 second of inactivity
-    });
-  }
+	// Event Listeners
+	uiContainer.querySelector(".wtr-replacer-close-btn").addEventListener("click", Handlers.hideUIPanel)
+	uiContainer.querySelector("#wtr-disable-all").addEventListener("change", Handlers.handleDisableToggle)
+	uiContainer.querySelector("#wtr-save-btn").addEventListener("click", Handlers.handleSaveTerm)
+	uiContainer.querySelector("#wtr-delete-selected-btn").addEventListener("click", Handlers.handleDeleteSelected)
+	uiContainer.querySelector("#wtr-search-bar").addEventListener("input", Handlers.handleSearch)
+	uiContainer.querySelector(".wtr-replacer-term-list").addEventListener("click", Handlers.handleListInteraction)
+	uiContainer
+		.querySelectorAll(".wtr-replacer-tab-btn")
+		.forEach((btn) => btn.addEventListener("click", Handlers.handleTabSwitch))
+	uiContainer.querySelector("#wtr-export-novel-btn").addEventListener("click", Handlers.handleExportNovel)
+	uiContainer.querySelector("#wtr-export-all-btn").addEventListener("click", Handlers.handleExportAll)
+	uiContainer.querySelector("#wtr-export-combined-btn").addEventListener("click", Handlers.handleExportCombined)
+	uiContainer.querySelector("#wtr-import-novel-btn").addEventListener("click", () => {
+		state.importType = "novel"
+		document.getElementById("wtr-file-input").click()
+	})
+	uiContainer.querySelector("#wtr-import-all-btn").addEventListener("click", () => {
+		state.importType = "all"
+		document.getElementById("wtr-file-input").click()
+	})
+	uiContainer.querySelector("#wtr-file-input").addEventListener("change", Handlers.handleFileImport)
+	uiContainer.querySelector("#wtr-find-duplicates-btn").addEventListener("click", Handlers.handleFindDuplicates)
+	uiContainer.querySelector("#wtr-prev-dup-btn").addEventListener("click", () => Handlers.changeDupGroup(-1))
+	uiContainer.querySelector("#wtr-next-dup-btn").addEventListener("click", () => Handlers.changeDupGroup(1))
+	uiContainer.querySelector("#wtr-exit-dup-btn").addEventListener("click", Handlers.exitDupMode)
 
-  // Character-based auto-resize for original text field
-  const regexCheckbox = uiContainer.querySelector('#wtr-is-regex');
-  const wholeWordCheckbox = uiContainer.querySelector('#wtr-whole-word');
-  regexCheckbox.addEventListener('change', e => {
-    wholeWordCheckbox.disabled = e.target.checked;
-    if (e.target.checked) wholeWordCheckbox.checked = false;
-  });
+	// Add scroll event listener to save term list location
+	const contentArea = uiContainer.querySelector(".wtr-replacer-content")
+	if (contentArea) {
+		let scrollTimeout
+		contentArea.addEventListener("scroll", () => {
+			clearTimeout(scrollTimeout)
+			scrollTimeout = setTimeout(() => {
+				if (document.querySelector(".wtr-replacer-tab-btn.active").dataset.tab === "terms") {
+					Handlers.saveTermListLocation()
+				}
+			}, 1000) // Save after 1 second of inactivity
+		})
+	}
 
-  const originalTextarea = uiContainer.querySelector('#wtr-original');
-  function autoResizeTextarea() {
-    if (!originalTextarea) return;
+	// Character-based auto-resize for original text field
+	const regexCheckbox = uiContainer.querySelector("#wtr-is-regex")
+	const wholeWordCheckbox = uiContainer.querySelector("#wtr-whole-word")
+	regexCheckbox.addEventListener("change", (e) => {
+		wholeWordCheckbox.disabled = e.target.checked
+		if (e.target.checked) {
+			wholeWordCheckbox.checked = false
+		}
+	})
 
-    const text = originalTextarea.value;
-    const charCount = text.length;
-    const lines = Math.ceil(charCount / 40);
-    const maxLines = Infinity;
-    const finalLines = Math.min(lines, maxLines);
-    originalTextarea.rows = Math.max(1, finalLines);
-  }
+	const originalTextarea = uiContainer.querySelector("#wtr-original")
+	function autoResizeTextarea() {
+		if (!originalTextarea) {
+			return
+		}
 
-  originalTextarea.addEventListener('input', autoResizeTextarea);
-  originalTextarea.addEventListener('focus', autoResizeTextarea);
+		const text = originalTextarea.value
+		const charCount = text.length
+		const lines = Math.ceil(charCount / 40)
+		const maxLines = Infinity
+		const finalLines = Math.min(lines, maxLines)
+		originalTextarea.rows = Math.max(1, finalLines)
+	}
 
-  // Real-time regex validation system
-  const saveButton = uiContainer.querySelector('#wtr-save-btn');
-  const replacementInput = uiContainer.querySelector('#wtr-replacement');
-  
-  function updateValidationVisual(state) {
-    // Remove all validation classes
-    originalTextarea.classList.remove('wtr-field-invalid', 'wtr-field-valid');
-    
-    if (state === 'invalid') {
-      originalTextarea.classList.add('wtr-field-invalid');
-    } else if (state === 'valid') {
-      originalTextarea.classList.add('wtr-field-valid');
-    }
-  }
-  
-  function validateAndUpdateUI() {
-    const isRegexEnabled = regexCheckbox.checked;
-    const originalText = originalTextarea.value.trim();
-    const replacementText = replacementInput.value.trim();
-    const isValidInput = originalText.length > 0 && replacementText.length > 0;
-    
-    if (!isRegexEnabled || originalText.length === 0) {
-      // Not a regex or empty field, clear validation state
-      updateValidationVisual(null);
-      saveButton.disabled = !isValidInput;
-      return;
-    }
-    
-    // Validate regex pattern
-    const validation = Handlers.validateRegexSilent(originalText);
-    
-    if (validation.isValid) {
-      updateValidationVisual('valid');
-      saveButton.disabled = !isValidInput;
-    } else {
-      updateValidationVisual('invalid');
-      saveButton.disabled = true;
-    }
-  }
-  
-  // Add real-time validation listeners
-  originalTextarea.addEventListener('input', validateAndUpdateUI);
-  replacementInput.addEventListener('input', validateAndUpdateUI);
-  regexCheckbox.addEventListener('change', validateAndUpdateUI);
-  
-  // Initial validation state
-  validateAndUpdateUI();
+	originalTextarea.addEventListener("input", autoResizeTextarea)
+	originalTextarea.addEventListener("focus", autoResizeTextarea)
 
-  // Create floating action button
-  const addTermFloatBtn = document.createElement('button');
-  addTermFloatBtn.className = 'wtr-add-term-float-btn';
-  addTermFloatBtn.textContent = 'Add Term';
-  document.body.appendChild(addTermFloatBtn);
-  addTermFloatBtn.addEventListener('click', Handlers.handleAddTermFromSelection);
-  document.addEventListener('mouseup', Handlers.handleTextSelection);
-  document.addEventListener('touchend', Handlers.handleTextSelection);
+	// Real-time regex validation system
+	const saveButton = uiContainer.querySelector("#wtr-save-btn")
+	const replacementInput = uiContainer.querySelector("#wtr-replacement")
 
-  // Pagination Listeners
-  uiContainer.querySelector('#wtr-first-page-btn').addEventListener('click', () => {
-    if (state.currentPage > 1) {
-      state.currentPage = 1;
-      renderTermList(state.currentSearchValue);
-    }
-  });
-  uiContainer.querySelector('#wtr-prev-page-btn').addEventListener('click', () => {
-    if (state.currentPage > 1) {
-      state.currentPage--;
-      renderTermList(state.currentSearchValue);
-    }
-  });
-  uiContainer.querySelector('#wtr-next-page-btn').addEventListener('click', () => {
-    const filteredTerms = state.terms.filter(
-      t =>
-        t.original.toLowerCase().includes(state.currentSearchValue.toLowerCase()) ||
-        t.replacement.toLowerCase().includes(state.currentSearchValue.toLowerCase())
-    );
-    const totalPages = Math.ceil(filteredTerms.length / ITEMS_PER_PAGE) || 1;
-    if (state.currentPage < totalPages) {
-      state.currentPage++;
-      renderTermList(state.currentSearchValue);
-    }
-  });
-  uiContainer.querySelector('#wtr-last-page-btn').addEventListener('click', () => {
-    const filteredTerms = state.terms.filter(
-      t =>
-        t.original.toLowerCase().includes(state.currentSearchValue.toLowerCase()) ||
-        t.replacement.toLowerCase().includes(state.currentSearchValue.toLowerCase())
-    );
-    const totalPages = Math.ceil(filteredTerms.length / ITEMS_PER_PAGE) || 1;
-    if (state.currentPage < totalPages) {
-      state.currentPage = totalPages;
-      renderTermList(state.currentSearchValue);
-    }
-  });
+	function updateValidationVisual(state) {
+		// Remove all validation classes
+		originalTextarea.classList.remove("wtr-field-invalid", "wtr-field-valid")
 
-  log(state.globalSettings, 'WTR Term Replacer: UI created successfully');
+		if (state === "invalid") {
+			originalTextarea.classList.add("wtr-field-invalid")
+		} else if (state === "valid") {
+			originalTextarea.classList.add("wtr-field-valid")
+		}
+	}
+
+	function validateAndUpdateUI() {
+		const isRegexEnabled = regexCheckbox.checked
+		const originalText = originalTextarea.value.trim()
+		const replacementText = replacementInput.value.trim()
+		const isValidInput = originalText.length > 0 && replacementText.length > 0
+
+		if (!isRegexEnabled || originalText.length === 0) {
+			// Not a regex or empty field, clear validation state
+			updateValidationVisual(null)
+			saveButton.disabled = !isValidInput
+			return
+		}
+
+		// Validate regex pattern
+		const validation = Handlers.validateRegexSilent(originalText)
+
+		if (validation.isValid) {
+			updateValidationVisual("valid")
+			saveButton.disabled = !isValidInput
+		} else {
+			updateValidationVisual("invalid")
+			saveButton.disabled = true
+		}
+	}
+
+	// Add real-time validation listeners
+	originalTextarea.addEventListener("input", validateAndUpdateUI)
+	replacementInput.addEventListener("input", validateAndUpdateUI)
+	regexCheckbox.addEventListener("change", validateAndUpdateUI)
+
+	// Initial validation state
+	validateAndUpdateUI()
+
+	// Create floating action button
+	const addTermFloatBtn = document.createElement("button")
+	addTermFloatBtn.className = "wtr-add-term-float-btn"
+	addTermFloatBtn.textContent = "Add Term"
+	document.body.appendChild(addTermFloatBtn)
+	addTermFloatBtn.addEventListener("click", Handlers.handleAddTermFromSelection)
+	document.addEventListener("mouseup", Handlers.handleTextSelection)
+	document.addEventListener("touchend", Handlers.handleTextSelection)
+
+	// Pagination Listeners
+	uiContainer.querySelector("#wtr-first-page-btn").addEventListener("click", () => {
+		if (state.currentPage > 1) {
+			state.currentPage = 1
+			renderTermList(state.currentSearchValue)
+		}
+	})
+	uiContainer.querySelector("#wtr-prev-page-btn").addEventListener("click", () => {
+		if (state.currentPage > 1) {
+			state.currentPage--
+			renderTermList(state.currentSearchValue)
+		}
+	})
+	uiContainer.querySelector("#wtr-next-page-btn").addEventListener("click", () => {
+		const filteredTerms = state.terms.filter(
+			(t) =>
+				t.original.toLowerCase().includes(state.currentSearchValue.toLowerCase()) ||
+				t.replacement.toLowerCase().includes(state.currentSearchValue.toLowerCase()),
+		)
+		const totalPages = Math.ceil(filteredTerms.length / ITEMS_PER_PAGE) || 1
+		if (state.currentPage < totalPages) {
+			state.currentPage++
+			renderTermList(state.currentSearchValue)
+		}
+	})
+	uiContainer.querySelector("#wtr-last-page-btn").addEventListener("click", () => {
+		const filteredTerms = state.terms.filter(
+			(t) =>
+				t.original.toLowerCase().includes(state.currentSearchValue.toLowerCase()) ||
+				t.replacement.toLowerCase().includes(state.currentSearchValue.toLowerCase()),
+		)
+		const totalPages = Math.ceil(filteredTerms.length / ITEMS_PER_PAGE) || 1
+		if (state.currentPage < totalPages) {
+			state.currentPage = totalPages
+			renderTermList(state.currentSearchValue)
+		}
+	})
+
+	log(state.globalSettings, "WTR Term Replacer: UI created successfully")
 }
 
 export function showProcessingIndicator(show) {
-  const overlay = document.querySelector('.wtr-processing-overlay');
-  if (overlay) overlay.style.display = show ? 'flex' : 'none';
+	const overlay = document.querySelector(".wtr-processing-overlay")
+	if (overlay) {
+		overlay.style.display = show ? "flex" : "none"
+	}
 }
 
 export function showUILoader() {
-  const loader = document.getElementById('wtr-ui-loader');
-  if (loader) loader.style.display = 'flex';
-  const content = document.querySelector('.wtr-replacer-content');
-  if (content) content.style.pointerEvents = 'none';
+	const loader = document.getElementById("wtr-ui-loader")
+	if (loader) {
+		loader.style.display = "flex"
+	}
+	const content = document.querySelector(".wtr-replacer-content")
+	if (content) {
+		content.style.pointerEvents = "none"
+	}
 }
 
 export function hideUILoader() {
-  const loader = document.getElementById('wtr-ui-loader');
-  if (loader) loader.style.display = 'none';
-  const content = document.querySelector('.wtr-replacer-content');
-  if (content) content.style.pointerEvents = 'auto';
+	const loader = document.getElementById("wtr-ui-loader")
+	if (loader) {
+		loader.style.display = "none"
+	}
+	const content = document.querySelector(".wtr-replacer-content")
+	if (content) {
+		content.style.pointerEvents = "auto"
+	}
 }
 
-export function renderTermList(filter = '') {
-  const listEl = document.querySelector('.wtr-replacer-term-list');
-  const paginationControls = document.querySelector('.wtr-pagination-controls');
-  const pageIndicator = document.getElementById('wtr-page-indicator');
-  const firstBtn = document.getElementById('wtr-first-page-btn');
-  const prevBtn = document.getElementById('wtr-prev-page-btn');
-  const nextBtn = document.getElementById('wtr-next-page-btn');
-  const lastBtn = document.getElementById('wtr-last-page-btn');
-  const contentArea = document.querySelector('.wtr-replacer-content');
+export function renderTermList(filter = "") {
+	const listEl = document.querySelector(".wtr-replacer-term-list")
+	const paginationControls = document.querySelector(".wtr-pagination-controls")
+	const pageIndicator = document.getElementById("wtr-page-indicator")
+	const firstBtn = document.getElementById("wtr-first-page-btn")
+	const prevBtn = document.getElementById("wtr-prev-page-btn")
+	const nextBtn = document.getElementById("wtr-next-page-btn")
+	const lastBtn = document.getElementById("wtr-last-page-btn")
+	const contentArea = document.querySelector(".wtr-replacer-content")
 
-  if (!listEl || !paginationControls || !pageIndicator || !prevBtn || !nextBtn || !firstBtn || !lastBtn) return;
-  
-  // Capture current scroll position before re-rendering
-  const previousScrollTop = contentArea ? contentArea.scrollTop : 0;
-  const shouldRestoreScroll = previousScrollTop > 0 && !state.isDupMode && filter === state.currentSearchValue;
-  
-  listEl.innerHTML = '';
+	if (!listEl || !paginationControls || !pageIndicator || !prevBtn || !nextBtn || !firstBtn || !lastBtn) {
+		return
+	}
 
-  let filteredTerms;
-  let termsToRender;
+	// Capture current scroll position before re-rendering
+	const previousScrollTop = contentArea ? contentArea.scrollTop : 0
+	const shouldRestoreScroll = previousScrollTop > 0 && !state.isDupMode && filter === state.currentSearchValue
 
-  if (state.isDupMode) {
-    const currentKey = state.dupKeys[state.currentDupIndex];
-    filteredTerms = state.dupGroups.get(currentKey) || [];
-    document.getElementById('wtr-dup-message').textContent = `Duplicate group ${state.currentDupIndex + 1} of ${
-      state.dupKeys.length
-    } — ${currentKey}`;
-    document.getElementById('wtr-dup-message').style.display = 'block';
-    document.getElementById('wtr-dup-controls').style.display = 'flex';
-    document.getElementById('wtr-prev-dup-btn').disabled = state.currentDupIndex === 0;
-    document.getElementById('wtr-next-dup-btn').disabled = state.currentDupIndex === state.dupKeys.length - 1;
-    document.getElementById('wtr-search-bar').disabled = true;
-    paginationControls.style.display = 'none';
-    termsToRender = filteredTerms;
-  } else {
-    const filterLower = filter.toLowerCase();
-    filteredTerms = state.terms.filter(
-      t => t.original.toLowerCase().includes(filterLower) || t.replacement.toLowerCase().includes(filterLower)
-    );
-    document.getElementById('wtr-dup-message').style.display = 'none';
-    document.getElementById('wtr-dup-controls').style.display = 'none';
-    document.getElementById('wtr-search-bar').disabled = false;
+	listEl.innerHTML = ""
 
-    const totalPages = Math.ceil(filteredTerms.length / ITEMS_PER_PAGE) || 1;
-    state.currentPage = Math.max(1, Math.min(state.currentPage, totalPages));
+	let filteredTerms
+	let termsToRender
 
-    const start = (state.currentPage - 1) * ITEMS_PER_PAGE;
-    const end = start + ITEMS_PER_PAGE;
-    termsToRender = filteredTerms.slice(start, end);
+	if (state.isDupMode) {
+		const currentKey = state.dupKeys[state.currentDupIndex]
+		filteredTerms = state.dupGroups.get(currentKey) || []
+		document.getElementById("wtr-dup-message").textContent = `Duplicate group ${state.currentDupIndex + 1} of ${
+			state.dupKeys.length
+		} — ${currentKey}`
+		document.getElementById("wtr-dup-message").style.display = "block"
+		document.getElementById("wtr-dup-controls").style.display = "flex"
+		document.getElementById("wtr-prev-dup-btn").disabled = state.currentDupIndex === 0
+		document.getElementById("wtr-next-dup-btn").disabled = state.currentDupIndex === state.dupKeys.length - 1
+		document.getElementById("wtr-search-bar").disabled = true
+		paginationControls.style.display = "none"
+		termsToRender = filteredTerms
+	} else {
+		const filterLower = filter.toLowerCase()
+		filteredTerms = state.terms.filter(
+			(t) => t.original.toLowerCase().includes(filterLower) || t.replacement.toLowerCase().includes(filterLower),
+		)
+		document.getElementById("wtr-dup-message").style.display = "none"
+		document.getElementById("wtr-dup-controls").style.display = "none"
+		document.getElementById("wtr-search-bar").disabled = false
 
-    if (totalPages > 1) {
-      paginationControls.style.display = 'flex';
-      pageIndicator.textContent = `Page ${state.currentPage} of ${totalPages}`;
-      firstBtn.disabled = state.currentPage === 1;
-      prevBtn.disabled = state.currentPage === 1;
-      nextBtn.disabled = state.currentPage === totalPages;
-      lastBtn.disabled = state.currentPage === totalPages;
-    } else {
-      paginationControls.style.display = 'none';
-    }
-  }
+		const totalPages = Math.ceil(filteredTerms.length / ITEMS_PER_PAGE) || 1
+		state.currentPage = Math.max(1, Math.min(state.currentPage, totalPages))
 
-  if (termsToRender.length === 0) {
-    listEl.innerHTML = state.terms.length === 0 ? '<li>No terms defined.</li>' : '<li>No terms match search.</li>';
-  } else {
-    const fragment = document.createDocumentFragment();
-    termsToRender.forEach(term => {
-      const li = document.createElement('li');
-      li.className = 'wtr-replacer-term-item';
-      li.dataset.id = term.id;
-      li.innerHTML = `
+		const start = (state.currentPage - 1) * ITEMS_PER_PAGE
+		const end = start + ITEMS_PER_PAGE
+		termsToRender = filteredTerms.slice(start, end)
+
+		if (totalPages > 1) {
+			paginationControls.style.display = "flex"
+			pageIndicator.textContent = `Page ${state.currentPage} of ${totalPages}`
+			firstBtn.disabled = state.currentPage === 1
+			prevBtn.disabled = state.currentPage === 1
+			nextBtn.disabled = state.currentPage === totalPages
+			lastBtn.disabled = state.currentPage === totalPages
+		} else {
+			paginationControls.style.display = "none"
+		}
+	}
+
+	if (termsToRender.length === 0) {
+		listEl.innerHTML = state.terms.length === 0 ? "<li>No terms defined.</li>" : "<li>No terms match search.</li>"
+	} else {
+		const fragment = document.createDocumentFragment()
+		termsToRender.forEach((term) => {
+			const li = document.createElement("li")
+			li.className = "wtr-replacer-term-item"
+			li.dataset.id = term.id
+			li.innerHTML = `
         <input type="checkbox" class="wtr-replacer-term-select" data-id="${term.id}">
         <div class="wtr-replacer-term-details">
           <div class="wtr-replacer-term-text">
             <span class="wtr-term-original">${term.original}</span> → <span class="wtr-term-replacement">${term.replacement}</span>
           </div>
-          <div>${term.caseSensitive ? '<small>CS</small>' : ''} ${term.isRegex ? '<small>RX</small>' : ''} ${term.wholeWord ? '<small>WW</small>' : ''}</div>
+          <div>${term.caseSensitive ? "<small>CS</small>" : ""} ${term.isRegex ? "<small>RX</small>" : ""} ${term.wholeWord ? "<small>WW</small>" : ""}</div>
         </div>
         <div><button class="btn btn-secondary btn-sm wtr-edit-btn" data-id="${term.id}">Edit</button></div>
-      `;
-      fragment.appendChild(li);
-    });
-    listEl.appendChild(fragment);
-  }
-  
-  // Restore scroll position after DOM update if it was captured
-  if (shouldRestoreScroll && contentArea) {
-    // Use requestAnimationFrame to ensure DOM has been updated
-    requestAnimationFrame(() => {
-      contentArea.scrollTop = previousScrollTop;
-    });
-  }
+      `
+			fragment.appendChild(li)
+		})
+		listEl.appendChild(fragment)
+	}
+
+	// Restore scroll position after DOM update if it was captured
+	if (shouldRestoreScroll && contentArea) {
+		// Use requestAnimationFrame to ensure DOM has been updated
+		requestAnimationFrame(() => {
+			contentArea.scrollTop = previousScrollTop
+		})
+	}
 }
 
 export function showUIPanel() {
-  const ui = document.querySelector('.wtr-replacer-ui');
-  ui.style.display = 'flex';
-  document.getElementById('wtr-disable-all').checked = state.settings.isDisabled;
+	const ui = document.querySelector(".wtr-replacer-ui")
+	ui.style.display = "flex"
+	document.getElementById("wtr-disable-all").checked = state.settings.isDisabled
 
-  // Restore saved location when showing the terms tab
-  if (document.querySelector('.wtr-replacer-tab-btn.active').dataset.tab === 'terms') {
-    Handlers.restoreTermListLocation();
-  } else {
-    renderTermList();
-  }
+	// Restore saved location when showing the terms tab
+	if (document.querySelector(".wtr-replacer-tab-btn.active").dataset.tab === "terms") {
+		Handlers.restoreTermListLocation()
+	} else {
+		renderTermList()
+	}
 }
 
 export function hideUIPanel() {
-  // Save current location before hiding
-  Handlers.saveTermListLocation();
-  document.querySelector('.wtr-replacer-ui').style.display = 'none';
-  clearTermList();
+	// Save current location before hiding
+	Handlers.saveTermListLocation()
+	document.querySelector(".wtr-replacer-ui").style.display = "none"
+	clearTermList()
 }
 
 export function clearTermList() {
-  const listEl = document.querySelector('.wtr-replacer-term-list');
-  if (listEl) listEl.innerHTML = '';
+	const listEl = document.querySelector(".wtr-replacer-term-list")
+	if (listEl) {
+		listEl.innerHTML = ""
+	}
 }
 
 export function showFormView(term = null) {
-  document.getElementById('wtr-term-id').value = term ? term.id : '';
-  document.getElementById('wtr-original').value = term ? term.original : '';
-  document.getElementById('wtr-replacement').value = term ? term.replacement : '';
-  document.getElementById('wtr-case-sensitive').checked = term ? term.caseSensitive : false;
-  document.getElementById('wtr-is-regex').checked = term ? term.isRegex : false;
-  document.getElementById('wtr-whole-word').checked = term ? term.wholeWord : false;
-  document.getElementById('wtr-whole-word').disabled = term ? term.isRegex : false;
-  document.getElementById('wtr-save-btn').textContent = term ? 'Update Term' : 'Save Term';
-  switchTab('add');
+	document.getElementById("wtr-term-id").value = term ? term.id : ""
+	document.getElementById("wtr-original").value = term ? term.original : ""
+	document.getElementById("wtr-replacement").value = term ? term.replacement : ""
+	document.getElementById("wtr-case-sensitive").checked = term ? term.caseSensitive : false
+	document.getElementById("wtr-is-regex").checked = term ? term.isRegex : false
+	document.getElementById("wtr-whole-word").checked = term ? term.wholeWord : false
+	document.getElementById("wtr-whole-word").disabled = term ? term.isRegex : false
+	document.getElementById("wtr-save-btn").textContent = term ? "Update Term" : "Save Term"
+	switchTab("add")
 
-  // Initialize auto-resize after form is populated
-  setTimeout(() => {
-    const originalTextarea = document.getElementById('wtr-original');
-    if (originalTextarea) {
-      const text = originalTextarea.value;
-      const charCount = text.length;
-      const lines = Math.ceil(charCount / 40);
-      originalTextarea.rows = Math.max(1, lines);
-    }
-    
-    // Re-initialize validation state for the form
-    const regexCheckbox = document.getElementById('wtr-is-regex');
-    if (regexCheckbox) {
-      const validationEvent = new Event('input', { bubbles: true });
-      originalTextarea.dispatchEvent(validationEvent);
-    }
-  }, 10);
+	// Initialize auto-resize after form is populated
+	setTimeout(() => {
+		const originalTextarea = document.getElementById("wtr-original")
+		if (originalTextarea) {
+			const text = originalTextarea.value
+			const charCount = text.length
+			const lines = Math.ceil(charCount / 40)
+			originalTextarea.rows = Math.max(1, lines)
+		}
+
+		// Re-initialize validation state for the form
+		const regexCheckbox = document.getElementById("wtr-is-regex")
+		if (regexCheckbox) {
+			const validationEvent = new Event("input", { bubbles: true })
+			originalTextarea.dispatchEvent(validationEvent)
+		}
+	}, 10)
 }
 
 export function switchTab(tabName) {
-  document.querySelector(`.wtr-replacer-tab-btn[data-tab="${tabName}"]`).click();
+	document.querySelector(`.wtr-replacer-tab-btn[data-tab="${tabName}"]`).click()
 }
 
 // Simple function to create menu buttons with inline SVG icons
 function createSimpleMenuButton(options) {
-  const {
-    text = 'Settings',
-    onClick = null,
-    className = '',
-    tooltip = ''
-  } = options;
+	const { text = "Settings", onClick = null, className = "", tooltip = "" } = options
 
-  const button = document.createElement('button');
-  button.className = `replacer-settings-btn ${className}`;
-  if (tooltip) button.title = tooltip;
+	const button = document.createElement("button")
+	button.className = `replacer-settings-btn ${className}`
+	if (tooltip) {
+		button.title = tooltip
+	}
 
-  // Create settings icon using the specified SVG
-  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-  svg.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
-  svg.setAttribute('height', '24px');
-  svg.setAttribute('viewBox', '0 -960 960 960');
-  svg.setAttribute('width', '24px');
-  svg.setAttribute('fill', '#1f1f1f');
-  svg.style.marginRight = '4px';
-  svg.style.verticalAlign = 'middle';
-  svg.innerHTML = '<path d="M700-120h40v-100h100v-40H740v-100h-40v100H600v40h100v100Zm20 80q-83 0-141.5-58.5T520-240q0-83 58.5-141.5T720-440q83 0 141.5 58.5T920-240q0 83-58.5 141.5T720-40ZM280-600h400v-80H280v80Zm187 480H200q-33 0-56.5-23.5T120-200v-560q0-33 23.5-56.5T200-840h560q33 0 56.5 23.5T840-760v268q-29-14-58.5-21t-61.5-7q-11 0-20.5.5T680-517v-3H280v80h245q-18 17-32.5 37T467-360H280v80h163q-2 10-2.5 19.5T440-240q0 33 6 61.5t21 58.5Z"/>';
-  
-  button.appendChild(svg);
+	// Create settings icon using the specified SVG
+	const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg")
+	svg.setAttribute("xmlns", "http://www.w3.org/2000/svg")
+	svg.setAttribute("height", "24px")
+	svg.setAttribute("viewBox", "0 -960 960 960")
+	svg.setAttribute("width", "24px")
+	svg.setAttribute("fill", "#1f1f1f")
+	svg.style.marginRight = "4px"
+	svg.style.verticalAlign = "middle"
+	svg.innerHTML =
+		'<path d="M700-120h40v-100h100v-40H740v-100h-40v100H600v40h100v100Zm20 80q-83 0-141.5-58.5T520-240q0-83 58.5-141.5T720-440q83 0 141.5 58.5T920-240q0 83-58.5 141.5T720-40ZM280-600h400v-80H280v80Zm187 480H200q-33 0-56.5-23.5T120-200v-560q0-33 23.5-56.5T200-840h560q33 0 56.5 23.5T840-760v268q-29-14-58.5-21t-61.5-7q-11 0-20.5.5T680-517v-3H280v80h245q-18 17-32.5 37T467-360H280v80h163q-2 10-2.5 19.5T440-240q0 33 6 61.5t21 58.5Z"/>'
 
-  // Add text
-  const textSpan = document.createElement('span');
-  textSpan.textContent = text;
-  button.appendChild(textSpan);
+	button.appendChild(svg)
 
-  // Add click handler
-  if (onClick) {
-    button.addEventListener('click', onClick);
-  }
+	// Add text
+	const textSpan = document.createElement("span")
+	textSpan.textContent = text
+	button.appendChild(textSpan)
 
-  return button;
+	// Add click handler
+	if (onClick) {
+		button.addEventListener("click", onClick)
+	}
+
+	return button
 }
 
 export function addMenuButton() {
-  const container = document.querySelector('div.col-6:has(button.term-edit-btn)');
-  if (!container || state.observedMenuContainers.has(container)) {
-    return;
-  }
+	const container = document.querySelector("div.col-6:has(button.term-edit-btn)")
+	if (!container || state.observedMenuContainers.has(container)) {
+		return
+	}
 
-  const ensureButtonState = () => {
-    let settingsButton = container.querySelector('.replacer-settings-btn');
-    const originalButton = container.querySelector('.term-edit-btn:not(.replacer-settings-btn)');
+	const ensureButtonState = () => {
+		let settingsButton = container.querySelector(".replacer-settings-btn")
+		const originalButton = container.querySelector(".term-edit-btn:not(.replacer-settings-btn)")
 
-    // 1. Create the button if it doesn't exist
-    if (!settingsButton) {
-      if (!originalButton) return; // Can't create if the original doesn't exist yet
-      
-      // Create button with simple inline SVG icon
-      settingsButton = createSimpleMenuButton({
-        text: 'Term Settings',
-        onClick: showUIPanel,
-        className: originalButton.className, // Copy classes for styling
-        tooltip: 'Open WTR Term Settings'
-      });
-      
-      container.appendChild(settingsButton);
-      log(state.globalSettings, 'WTR Term Replacer: Settings button created with simple icon system.');
-    }
+		// 1. Create the button if it doesn't exist
+		if (!settingsButton) {
+			if (!originalButton) {
+				return
+			} // Can't create if the original doesn't exist yet
 
-    // 2. Enforce the correct order (our button should be last)
-    if (container.lastChild !== settingsButton) {
-      container.appendChild(settingsButton);
-      log(state.globalSettings, 'WTR Term Replacer: Settings button order corrected.');
-    }
+			// Create button with simple inline SVG icon
+			settingsButton = createSimpleMenuButton({
+				text: "Term Settings",
+				onClick: showUIPanel,
+				className: originalButton.className, // Copy classes for styling
+				tooltip: "Open WTR Term Settings",
+			})
 
-    // 3. Apply consistent styling
-    if (originalButton && settingsButton) {
-      const desiredFlexStyle = '1 1 0%';
-      container.style.display = 'flex';
-      container.style.gap = '5px';
-      originalButton.style.flex = desiredFlexStyle;
-      settingsButton.style.flex = desiredFlexStyle;
-    }
-  };
+			container.appendChild(settingsButton)
+			log(state.globalSettings, "WTR Term Replacer: Settings button created with simple icon system.")
+		}
 
-  // Run once immediately
-  ensureButtonState();
+		// 2. Enforce the correct order (our button should be last)
+		if (container.lastChild !== settingsButton) {
+			container.appendChild(settingsButton)
+			log(state.globalSettings, "WTR Term Replacer: Settings button order corrected.")
+		}
 
-  // Observe for any changes and re-run to correct the state
-  const observer = new MutationObserver(() => {
-    log(state.globalSettings, 'WTR Term Replacer: Detected change in menu container, ensuring button state.');
-    ensureButtonState();
-  });
-  observer.observe(container, { childList: true });
+		// 3. Apply consistent styling
+		if (originalButton && settingsButton) {
+			const desiredFlexStyle = "1 1 0%"
+			container.style.display = "flex"
+			container.style.gap = "5px"
+			originalButton.style.flex = desiredFlexStyle
+			settingsButton.style.flex = desiredFlexStyle
+		}
+	}
 
-  // Mark this container as observed to prevent re-attaching observers
-  state.observedMenuContainers.add(container);
+	// Run once immediately
+	ensureButtonState()
+
+	// Observe for any changes and re-run to correct the state
+	const observer = new MutationObserver(() => {
+		log(state.globalSettings, "WTR Term Replacer: Detected change in menu container, ensuring button state.")
+		ensureButtonState()
+	})
+	observer.observe(container, { childList: true })
+
+	// Mark this container as observed to prevent re-attaching observers
+	state.observedMenuContainers.add(container)
 }
