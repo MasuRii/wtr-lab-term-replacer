@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name WTR Lab Term Replacer [DEV]
 // @description A modular, Webpack-powered version of the WTR Lab Term Replacer userscript.
-// @version 5.4.4-dev.1763572584617
+// @version 5.4.5-dev.1775322975520
 // @author MasuRii
 // @homepage https://github.com/MasuRii/wtr-lab-term-replacer-webpack#readme
 // @supportURL https://github.com/MasuRii/wtr-lab-term-replacer-webpack/issues
@@ -1878,7 +1878,7 @@ function addMenuButton() {
 /***/ ((module) => {
 
 "use strict";
-module.exports = /*#__PURE__*/JSON.parse('{"name":"wtr-lab-term-replacer-webpack","version":"5.4.4","description":"A modular, Webpack-powered version of the WTR Lab Term Replacer userscript.","author":"MasuRii","license":"MIT","private":true,"main":"dist/main.js","repository":{"type":"git","url":"https://github.com/MasuRii/wtr-lab-term-replacer-webpack.git"},"bugs":{"url":"https://github.com/MasuRii/wtr-lab-term-replacer-webpack/issues"},"keywords":["term","replacement","wtr-lab","userscript","modular","webpack"],"files":["dist/","src/"],"scripts":{"build":"npm run format && npm run lint:fix && npm run version:update && webpack --mode=production","build:performance":"npm run format && npm run lint:fix && webpack --config webpack.config.js --mode=production","build:greasyfork":"npm run format && npm run lint:fix && webpack --config webpack.config.js --mode=production","build:devbundle":"npm run format && npm run lint:fix && webpack --config webpack.config.js --mode=development","dev":"webpack serve --config webpack.config.js --mode=development","lint":"npm run lint:js && npm run lint:css","lint:check":"npm run lint:js && npm run lint:css","lint:fix":"npm run lint:js:fix && npm run lint:css:fix","lint:js":"eslint src/ --ext .js --max-warnings 0","lint:js:fix":"eslint src/ --ext .js --fix","lint:css":"echo \\"No CSS files found in project\\"","lint:css:fix":"echo \\"No CSS files found in project\\"","format":"prettier --write \\"src/**/*.{js,css}\\"","version:update":"node scripts/update-versions.js update","version:check":"node scripts/update-versions.js version","version:banner":"node scripts/update-versions.js banner","version:header":"node scripts/update-versions.js header"},"devDependencies":{"css-loader":"^7.1.2","eslint":"^9.39.1","eslint-config-prettier":"^10.1.8","eslint-plugin-import":"^2.32.0","eslint-plugin-prettier":"^5.5.4","prettier":"^3.6.2","style-loader":"^4.0.0","stylelint":"^16.25.0","stylelint-prettier":"^5.0.3","stylelint-config-standard":"^39.0.1","webpack":"^5.102.1","webpack-cli":"^6.0.1","webpack-dev-server":"^5.2.2","webpack-userscript":"^3.2.3"}}');
+module.exports = /*#__PURE__*/JSON.parse('{"name":"wtr-lab-term-replacer-webpack","version":"5.4.5","description":"A modular, Webpack-powered version of the WTR Lab Term Replacer userscript.","author":"MasuRii","license":"MIT","private":true,"main":"dist/main.js","repository":{"type":"git","url":"https://github.com/MasuRii/wtr-lab-term-replacer-webpack.git"},"bugs":{"url":"https://github.com/MasuRii/wtr-lab-term-replacer-webpack/issues"},"keywords":["term","replacement","wtr-lab","userscript","modular","webpack"],"files":["dist/","src/"],"scripts":{"build":"npm run format && npm run lint:fix && npm run version:update && webpack --mode=production","build:performance":"npm run format && npm run lint:fix && webpack --config webpack.config.js --mode=production","build:greasyfork":"npm run format && npm run lint:fix && webpack --config webpack.config.js --mode=production","build:devbundle":"npm run format && npm run lint:fix && webpack --config webpack.config.js --mode=development","dev":"webpack serve --config webpack.config.js --mode=development","lint":"npm run lint:js && npm run lint:css","lint:check":"npm run lint:js && npm run lint:css","lint:fix":"npm run lint:js:fix && npm run lint:css:fix","lint:js":"eslint src/ --ext .js --max-warnings 0","lint:js:fix":"eslint src/ --ext .js --fix","lint:css":"echo \\"No CSS files found in project\\"","lint:css:fix":"echo \\"No CSS files found in project\\"","format":"prettier --write \\"src/**/*.{js,css}\\"","version:update":"node scripts/update-versions.js update","version:check":"node scripts/update-versions.js version","version:banner":"node scripts/update-versions.js banner","version:header":"node scripts/update-versions.js header"},"devDependencies":{"css-loader":"^7.1.2","eslint":"^9.39.1","eslint-config-prettier":"^10.1.8","eslint-plugin-import":"^2.32.0","eslint-plugin-prettier":"^5.5.4","prettier":"^3.6.2","style-loader":"^4.0.0","stylelint":"^16.25.0","stylelint-prettier":"^5.0.3","stylelint-config-standard":"^39.0.1","webpack":"^5.102.1","webpack-cli":"^6.0.1","webpack-dev-server":"^5.2.2","webpack-userscript":"^3.2.3"}}');
 
 /***/ }),
 
@@ -2983,6 +2983,7 @@ function updateDupModeAfterChange() {
 __webpack_require__.r(__webpack_exports__);
 /* harmony export */ __webpack_require__.d(__webpack_exports__, {
 /* harmony export */   getTermKey: () => (/* binding */ getTermKey),
+/* harmony export */   getTermsForSlug: () => (/* binding */ getTermsForSlug),
 /* harmony export */   loadData: () => (/* binding */ loadData),
 /* harmony export */   loadGlobalSettings: () => (/* binding */ loadGlobalSettings),
 /* harmony export */   loadTermListLocation: () => (/* binding */ loadTermListLocation),
@@ -3073,15 +3074,27 @@ async function saveSearchFieldValue() {
 	}
 }
 
+async function getTermsForSlug(slug) {
+	if (!slug) {
+		return []
+	}
+
+	const terms = await GM_getValue(`${_config__WEBPACK_IMPORTED_MODULE_1__/* .TERMS_STORAGE_KEY_PREFIX */ .fW}${slug}`, [])
+	if (!Array.isArray(terms)) {
+		return []
+	}
+
+	return terms.map((term) => ({
+		...term,
+		wholeWord: term.wholeWord ?? false,
+	}))
+}
+
 async function loadData() {
 	try {
-		const TERMS_KEY = `${_config__WEBPACK_IMPORTED_MODULE_1__/* .TERMS_STORAGE_KEY_PREFIX */ .fW}${_state__WEBPACK_IMPORTED_MODULE_0__/* .state */ .wk.novelSlug}`
 		const SETTINGS_KEY = `${_config__WEBPACK_IMPORTED_MODULE_1__/* .SETTINGS_STORAGE_KEY_PREFIX */ .Ft}${_state__WEBPACK_IMPORTED_MODULE_0__/* .state */ .wk.novelSlug}`
 
-		_state__WEBPACK_IMPORTED_MODULE_0__/* .state */ .wk.terms = await GM_getValue(TERMS_KEY, [])
-		_state__WEBPACK_IMPORTED_MODULE_0__/* .state */ .wk.terms.forEach((t) => {
-			t.wholeWord = t.wholeWord ?? false
-		})
+		_state__WEBPACK_IMPORTED_MODULE_0__/* .state */ .wk.terms = await getTermsForSlug(_state__WEBPACK_IMPORTED_MODULE_0__/* .state */ .wk.novelSlug)
 		const savedSettings = await GM_getValue(SETTINGS_KEY, {})
 		_state__WEBPACK_IMPORTED_MODULE_0__/* .state */ .wk.settings = { isDisabled: false, ...savedSettings }
 	} catch (e) {
@@ -3469,6 +3482,72 @@ function addDisableAllRobustness() {
 	(0,_modules_utils__WEBPACK_IMPORTED_MODULE_5__/* .log */ .Rm)(_modules_state__WEBPACK_IMPORTED_MODULE_3__/* .state */ .wk.globalSettings, "WTR Term Replacer: Enhanced disable functionality activated")
 }
 
+function registerExternalIntegrationBridge() {
+	if (window.__WTR_TERM_REPLACER_BRIDGE_REGISTERED__) {
+		const existingApi = window.WTR_LAB_TERM_REPLACER || {}
+		window.WTR_LAB_TERM_REPLACER = {
+			...existingApi,
+			ready: true,
+			bridgeVersion: 1,
+		}
+		return
+	}
+
+	window.__WTR_TERM_REPLACER_BRIDGE_REGISTERED__ = true
+	const existingApi = window.WTR_LAB_TERM_REPLACER || {}
+	window.WTR_LAB_TERM_REPLACER = {
+		...existingApi,
+		ready: true,
+		bridgeVersion: 1,
+	}
+
+	window.addEventListener("wtr:addTerm", (event) => {
+		const { original, replacement, isRegex } = event?.detail || {}
+		_modules_handlers__WEBPACK_IMPORTED_MODULE_4__/* .addTermProgrammatically */ .IY(original, replacement, isRegex)
+	})
+
+	window.addEventListener("wtr:requestTerms", async (event) => {
+		const requestId = event?.detail?.requestId
+		const requestedSlug = event?.detail?.novelSlug || _modules_state__WEBPACK_IMPORTED_MODULE_3__/* .state */ .wk.novelSlug || (0,_modules_utils__WEBPACK_IMPORTED_MODULE_5__.getNovelSlug)()
+
+		if (!requestId) {
+			return
+		}
+
+		try {
+			const terms = requestedSlug === _modules_state__WEBPACK_IMPORTED_MODULE_3__/* .state */ .wk.novelSlug ? [..._modules_state__WEBPACK_IMPORTED_MODULE_3__/* .state */ .wk.terms] : await (0,_modules_storage__WEBPACK_IMPORTED_MODULE_1__.getTermsForSlug)(requestedSlug)
+
+			window.dispatchEvent(
+				new CustomEvent("wtr:termsResponse", {
+					detail: {
+						requestId,
+						novelSlug: requestedSlug,
+						terms,
+						source: "wtr-term-replacer",
+						success: true,
+					},
+				}),
+			)
+		} catch (error) {
+			(0,_modules_utils__WEBPACK_IMPORTED_MODULE_5__/* .log */ .Rm)(_modules_state__WEBPACK_IMPORTED_MODULE_3__/* .state */ .wk.globalSettings, "WTR Term Replacer: Failed to provide terms to external requester", error)
+			window.dispatchEvent(
+				new CustomEvent("wtr:termsResponse", {
+					detail: {
+						requestId,
+						novelSlug: requestedSlug,
+						terms: [],
+						source: "wtr-term-replacer",
+						success: false,
+						error: error instanceof Error ? error.message : String(error),
+					},
+				}),
+			)
+		}
+	})
+
+	;(0,_modules_utils__WEBPACK_IMPORTED_MODULE_5__/* .log */ .Rm)(_modules_state__WEBPACK_IMPORTED_MODULE_3__/* .state */ .wk.globalSettings, "WTR Term Replacer: External integration bridge registered")
+}
+
 async function main() {
 	(0,_modules_utils__WEBPACK_IMPORTED_MODULE_5__/* .log */ .Rm)(_modules_state__WEBPACK_IMPORTED_MODULE_3__/* .state */ .wk.globalSettings, "WTR Term Replacer: Main function starting initialization...")
 
@@ -3515,14 +3594,10 @@ async function main() {
 	;(0,_modules_utils__WEBPACK_IMPORTED_MODULE_5__/* .log */ .Rm)(_modules_state__WEBPACK_IMPORTED_MODULE_3__/* .state */ .wk.globalSettings, "WTR Term Replacer: Initialization completed successfully")
 }
 
+registerExternalIntegrationBridge()
+
 // Start the script
 main().catch((err) => console.error("WTR Term Replacer failed to start:", err))
-
-// Add custom event listener for programmatic term addition (equivalent to original lines 2444-2447)
-window.addEventListener("wtr:addTerm", (event) => {
-	const { original, replacement, isRegex } = event.detail
-	_modules_handlers__WEBPACK_IMPORTED_MODULE_4__/* .addTermProgrammatically */ .IY(original, replacement, isRegex)
-})
 
 })();
 
