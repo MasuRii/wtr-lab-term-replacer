@@ -2,7 +2,7 @@
 
 A userscript that replaces terms on WTR-Lab.com chapters so you can read with the names and terminology you prefer.
 
-You can manage term lists per novel, import and export your lists, catch duplicates automatically, and — if you also use [WTR Lab Term Inconsistency Finder](https://github.com/MasuRii/wtr-lab-term-inconsistency-finder) — share saved terms between the two scripts at runtime without any manual file swapping.
+You can manage term lists per novel, import and export your lists, catch duplicates automatically, and — if you also use [WTR Lab Term Inconsistency Finder](https://github.com/MasuRii/wtr-term-inconsistency-finder) — share saved terms between the two scripts at runtime without any manual file swapping.
 
 <img width="650" height="796" alt="image" src="https://github.com/user-attachments/assets/8e7811d2-67eb-46b7-b920-a43e90284580" />
 <img width="650" height="443" alt="image" src="https://github.com/user-attachments/assets/da58cc63-94fe-4e41-9fe4-28268691f08c" />
