@@ -394,7 +394,7 @@ async function executeProcessingWithRetry(chapterId, retryAttempts, attemptIndex
 function estimateContentLoadLevel(chapterBody) {
 	// Estimate how much content is loaded based on text density and structure
 	const textNodes = chapterBody.querySelectorAll("p, h1, h2, h3, h4, h5, h6, div, span")
-	const totalTextLength = Array.from(textNodes).reduce(
+	const totalTextLength = Array.from(textNodes as Iterable<Element>).reduce(
 		(total, node) => total + (node.textContent?.trim().length || 0),
 		0,
 	)
@@ -559,7 +559,7 @@ export function reprocessCurrentChapter() {
 		chapterBody.dataset.wtrProcessed = "false"
 
 		// Clear any existing processing entries for this chapter
-		const existingKeys = Array.from(state.processingQueue).filter((key) => key.startsWith(chapterId))
+		const existingKeys = Array.from(state.processingQueue as Set<string>).filter((key) => key.startsWith(chapterId))
 		existingKeys.forEach((key) => state.processingQueue.delete(key))
 
 		// Use robust reprocessing with retry mechanism

@@ -151,7 +151,7 @@ export function isElementReadyForProcessing(element) {
 export function estimateContentLoadLevel(chapterBody) {
 	// Estimate how much content is loaded based on text density and structure
 	const textNodes = chapterBody.querySelectorAll("p, h1, h2, h3, h4, h5, h6, div, span")
-	const totalTextLength = Array.from(textNodes).reduce(
+	const totalTextLength = Array.from(textNodes as Iterable<Element>).reduce(
 		(total, node) => total + (node.textContent?.trim().length || 0),
 		0,
 	)

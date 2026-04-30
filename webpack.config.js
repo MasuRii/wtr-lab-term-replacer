@@ -12,7 +12,7 @@ const COMMON_META = {
   description: pkg.description,
   author: pkg.author,
   license: pkg.license,
-  namespace: "http://tampermonkey.net/",
+  namespace: "https://github.com/MasuRii/wtr-lab-term-replacer-webpack",
   match: [
     "https://wtr-lab.com/en/novel/*/*/*"
   ],
@@ -44,7 +44,7 @@ const performanceConfig = {
   name: "performance",
   mode: "production",
   target: "web",
-  entry: "./src/index.js",
+  entry: "./src/index.ts",
   output: {
     path: path.resolve(__dirname, "dist"),
     filename: `${PACKAGE_NAME}.user.js`,
@@ -52,13 +52,21 @@ const performanceConfig = {
   module: {
     rules: [
       {
-        test: /\.css$/,
-        use: [
-          "style-loader",
-          "css-loader"
-        ]
-      }
-    ]
+        test: /\.ts$/,
+        use: {
+          loader: "ts-loader",
+          options: {
+            compilerOptions: {
+              noEmit: false,
+            },
+          },
+        },
+        exclude: /node_modules/,
+      },
+    ],
+  },
+  resolve: {
+    extensions: [".ts", ".js"],
   },
   optimization: {
     minimize: true,
@@ -90,7 +98,7 @@ const greasyforkConfig = {
   name: "greasyfork",
   mode: "production",
   target: "web",
-  entry: "./src/index.js",
+  entry: "./src/index.ts",
   output: {
     path: path.resolve(__dirname, "dist"),
     filename: `${PACKAGE_NAME}.greasyfork.user.js`,
@@ -98,13 +106,21 @@ const greasyforkConfig = {
   module: {
     rules: [
       {
-        test: /\.css$/,
-        use: [
-          "style-loader",
-          "css-loader"
-        ]
-      }
-    ]
+        test: /\.ts$/,
+        use: {
+          loader: "ts-loader",
+          options: {
+            compilerOptions: {
+              noEmit: false,
+            },
+          },
+        },
+        exclude: /node_modules/,
+      },
+    ],
+  },
+  resolve: {
+    extensions: [".ts", ".js"],
   },
   optimization: {
     minimize: false,
@@ -132,7 +148,7 @@ const devConfig = {
   name: "dev",
   mode: "development",
   target: "web",
-  entry: "./src/index.js",
+  entry: "./src/index.ts",
   output: {
     path: path.resolve(__dirname, "dist"),
     filename: `${PACKAGE_NAME}.dev.user.js`,
@@ -154,13 +170,21 @@ const devConfig = {
   module: {
     rules: [
       {
-        test: /\.css$/,
-        use: [
-          "style-loader",
-          "css-loader"
-        ]
-      }
-    ]
+        test: /\.ts$/,
+        use: {
+          loader: "ts-loader",
+          options: {
+            compilerOptions: {
+              noEmit: false,
+            },
+          },
+        },
+        exclude: /node_modules/,
+      },
+    ],
+  },
+  resolve: {
+    extensions: [".ts", ".js"],
   },
   optimization: {
     minimize: false,

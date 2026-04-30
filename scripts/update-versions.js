@@ -21,37 +21,17 @@ const FILES_TO_UPDATE = [
 			},
 		],
 	},
-	{
-		file: "GreasyForkREADME.md",
-		patterns: [
-			{
-				search: /^# WTR Lab Term Replacer v\d+\.\d+\.\d+/gm,
-				replace: `# WTR Lab Term Replacer v${VERSION_INFO.SEMANTIC}`,
-			},
-			{
-				search: /!\[Version\]\(https:\/\/img\.shields\.io\/badge\/version-[^)]+\)/g,
-				replace: `![Version](https://img.shields.io/badge/version-${VERSION_INFO.SEMANTIC}-blue.svg)`,
-			},
-			{
-				search: /\(WTR%20Lab%20Term%20Replacer-\d+\.\d+\.\d+\.user\.js\)/g,
-				replace: `(WTR%20Lab%20Term%20Replacer-${VERSION_INFO.SEMANTIC}.user.js)`,
-			},
-		],
-	},
 ]
 
 const command = process.argv[2] || "update"
 
 /**
  * Safely update a file using explicit patterns.
- * Returns:
- * - true if any changes were written
- * - false if no changes were needed
- * - throws on hard failure (I/O or unexpected error)
+ * Returns true when a change is written and false when no change is needed.
  */
 function updateFile(filePath, patterns) {
 	if (!fs.existsSync(filePath)) {
-		console.log(`⚠️  File not found: ${filePath}`)
+		console.log(`File not found: ${filePath}`)
 		return false
 	}
 
@@ -69,15 +49,14 @@ function updateFile(filePath, patterns) {
 
 		if (hasChanges) {
 			fs.writeFileSync(filePath, updatedContent, "utf8")
-			console.log(`✅ Updated ${filePath}`)
+			console.log(`Updated ${filePath}`)
 			return true
 		}
 
-		console.log(`ℹ️  No changes needed for ${filePath}`)
+		console.log(`No changes needed for ${filePath}`)
 		return false
 	} catch (error) {
-		// Treat as hard failure so build can surface the problem
-		console.error(`❌ Error updating ${filePath}:`, error.message)
+		console.error(`Error updating ${filePath}:`, error.message)
 		throw error
 	}
 }
@@ -87,29 +66,30 @@ function generateBanner() {
  * WTR Lab Term Replacer v${VERSION_INFO.SEMANTIC}
  * Built: ${VERSION_INFO.BUILD_DATE} (${VERSION_INFO.BUILD_ENV})
  *
- * A modular, Webpack-powered version of the WTR Lab Term Replacer userscript.
+ * A modular, Webpack-powered TypeScript version of the WTR Lab Term Replacer userscript.
  *
  * @version ${VERSION_INFO.SEMANTIC}
  * @build ${VERSION_INFO.BUILD_ENV}
  * @date ${VERSION_INFO.BUILD_DATE}
  */`
 
-	const bannerPath = path.join(__dirname, "../src/banner.js")
+	const bannerPath = path.join(__dirname, "../src/banner.ts")
 	fs.writeFileSync(bannerPath, banner, "utf8")
-	console.log(`📝 Generated build banner: ${bannerPath}`)
+	console.log(`Generated build banner: ${bannerPath}`)
 	return bannerPath
 }
 
 function generateHeader() {
 const header = `// ==UserScript==
 // @name         WTR Lab Term Replacer
-// @description  A modular, Webpack-powered version of the WTR Lab Term Replacer userscript.
+// @description  A modular, Webpack-powered TypeScript version of the WTR Lab Term Replacer userscript.
 // @version      ${VERSION_INFO.SEMANTIC}
 // @author       MasuRii
 // @homepage     https://github.com/MasuRii/wtr-lab-term-replacer-webpack#readme
 // @supportURL   https://github.com/MasuRii/wtr-lab-term-replacer-webpack/issues
 // @match        https://wtr-lab.com/en/novel/*/*/*
 // @downloadURL  https://github.com/MasuRii/wtr-lab-term-replacer-webpack#readme/raw/main/dist/${pkg.name}.${VERSION_INFO.SEMANTIC}.performance.user.js
+// @connect      fonts.googleapis.com
 // @grant        GM_setValue
 // @grant        GM_getValue
 // @grant        GM_listValues
@@ -117,21 +97,21 @@ const header = `// ==UserScript==
 // @grant        GM_registerMenuCommand
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=wtr-lab.com
 // @license      MIT
-// @namespace    http://tampermonkey.net/
+// @namespace    https://github.com/MasuRii/wtr-lab-term-replacer-webpack
 // @run-at       document-idle
 // @updateURL    https://github.com/MasuRii/wtr-lab-term-replacer-webpack#readme/raw/main/dist/${pkg.name}.${VERSION_INFO.SEMANTIC}.performance.meta.js
 // ==/UserScript==
 
 `
 
-const headerPath = path.join(__dirname, "../src/header.js")
+const headerPath = path.join(__dirname, "../src/header.ts")
 fs.writeFileSync(headerPath, header, "utf8")
-console.log(`📋 Generated script header: ${headerPath}`)
+console.log(`Generated script header: ${headerPath}`)
 return headerPath
 }
 
 function checkVersion() {
-	console.log("📋 Current Version Information:")
+	console.log("Current Version Information:")
 	console.log(`   Semantic Version: ${VERSION_INFO.SEMANTIC}`)
 	console.log(`   Display Version: ${VERSION_INFO.DISPLAY}`)
 	console.log(`   Build Environment: ${VERSION_INFO.BUILD_ENV}`)
@@ -142,18 +122,16 @@ function checkVersion() {
 	console.log(`   Changelog Version: ${VERSION_INFO.CHANGELOG}`)
 }
 
-// Main execution
-console.log("🔄 WTR Lab Term Replacer - Version Management")
+console.log("WTR Lab Term Replacer - Version Management")
 console.log("=".repeat(55))
 
 switch (command) {
 	case "update":
-		console.log("🔄 Updating versioned files...")
+		console.log("Updating versioned files...")
 
 		let updatedFiles = 0
 		let hadHardFailure = false
 
-		// 1) Update all configured files (package.json, README, etc.)
 		FILES_TO_UPDATE.forEach(({ file, patterns }) => {
 			const filePath = path.join(__dirname, "..", file)
 			try {
@@ -165,12 +143,11 @@ switch (command) {
 			}
 		})
 
-		// 2) Generate banner and header directly from VERSION_INFO
 		try {
 			generateBanner()
 			updatedFiles++
 		} catch (error) {
-			console.error("❌ Failed to generate banner.js:", error.message)
+			console.error("Failed to generate banner.ts:", error.message)
 			hadHardFailure = true
 		}
 
@@ -178,16 +155,16 @@ switch (command) {
 			generateHeader()
 			updatedFiles++
 		} catch (error) {
-			console.error("❌ Failed to generate header.js:", error.message)
+			console.error("Failed to generate header.ts:", error.message)
 			hadHardFailure = true
 		}
 
 		if (hadHardFailure) {
-			console.error("❌ Version update failed. Build aborted due to version sync errors.")
+			console.error("Version update failed. Build aborted due to version sync errors.")
 			process.exit(1)
 		}
 
-		console.log(`✅ Completed! Updated ${updatedFiles} items (including banner.js and header.js).`)
+		console.log(`Completed. Updated ${updatedFiles} items.`)
 		break
 
 	case "check":
@@ -198,7 +175,7 @@ switch (command) {
 		try {
 			generateBanner()
 		} catch (error) {
-			console.error("❌ Failed to generate banner.js:", error.message)
+			console.error("Failed to generate banner.ts:", error.message)
 			process.exit(1)
 		}
 		break
@@ -207,14 +184,14 @@ switch (command) {
 		try {
 			generateHeader()
 		} catch (error) {
-			console.error("❌ Failed to generate header.js:", error.message)
+			console.error("Failed to generate header.ts:", error.message)
 			process.exit(1)
 		}
 		break
 
 	default:
-		console.log("❓ Unknown command:", command)
-		console.log("📖 Available commands:")
+		console.log("Unknown command:", command)
+		console.log("Available commands:")
 		console.log("   update  - Update all versioned files (default)")
 		console.log("   check   - Display current version information")
 		console.log("   banner  - Generate build banner only")
@@ -222,5 +199,4 @@ switch (command) {
 		process.exit(1)
 }
 
-// Success exit
 process.exit(0)

@@ -1,6 +1,6 @@
 // State management for WTR Lab Term Replacer
 
-export const state = {
+export const state: any = {
 	novelSlug: null,
 	terms: [],
 	settings: { isDisabled: false },

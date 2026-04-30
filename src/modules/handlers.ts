@@ -250,7 +250,7 @@ export async function handleDisableToggle(e) {
 }
 
 export function downloadJSON(data, filename) {
-	return new Promise((resolve) => {
+	return new Promise<void>((resolve) => {
 		const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" })
 		const url = URL.createObjectURL(blob)
 		const a = document.createElement("a")
@@ -368,7 +368,7 @@ export async function handleFileImport(event) {
 		)
 		const reader = new FileReader()
 		reader.onload = async (e) => {
-			const content = e.target.result
+			const content = String(e.target.result ?? "")
 			log(state.globalSettings, `WTR Term Replacer: File content loaded, length: ${content.length} characters`)
 			let importedData
 			try {
