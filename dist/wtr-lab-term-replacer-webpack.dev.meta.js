@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name WTR Lab Term Replacer [DEV]
-// @description A modular, Webpack-powered version of the WTR Lab Term Replacer userscript.
-// @version 5.4.5-dev.1775322975520
+// @description A modular, Webpack-powered TypeScript version of the WTR Lab Term Replacer userscript.
+// @version 5.5.0-dev.1777571777786
 // @author MasuRii
 // @homepage https://github.com/MasuRii/wtr-lab-term-replacer-webpack#readme
 // @supportURL https://github.com/MasuRii/wtr-lab-term-replacer-webpack/issues
@@ -14,6 +14,6 @@
 // @grant GM_registerMenuCommand
 // @icon https://www.google.com/s2/favicons?sz=64&domain=wtr-lab.com
 // @license MIT
-// @namespace http://tampermonkey.net/
+// @namespace https://github.com/MasuRii/wtr-lab-term-replacer-webpack
 // @run-at document-idle
 // ==/UserScript==
