@@ -1,5 +1,12 @@
 # WTR Lab Term Replacer
 
+[![Version](https://img.shields.io/badge/version-5.6.0-blue.svg)](https://github.com/MasuRii/wtr-lab-term-replacer-webpack/releases)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/MasuRii/wtr-lab-term-replacer-webpack/blob/main/LICENSE)
+[![TypeScript](https://img.shields.io/badge/TypeScript-6.0-blue?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Built with Webpack](https://img.shields.io/badge/Built%20with-Webpack-8DD6F9?logo=webpack&logoColor=white)](https://webpack.js.org/)
+[![GitHub Issues](https://img.shields.io/github/issues/MasuRii/wtr-lab-term-replacer-webpack)](https://github.com/MasuRii/wtr-lab-term-replacer-webpack/issues)
+[![GitHub Stars](https://img.shields.io/github/stars/MasuRii/wtr-lab-term-replacer-webpack)](https://github.com/MasuRii/wtr-lab-term-replacer-webpack/stargazers)
+
 A userscript that replaces terms on WTR-Lab.com chapters so you can read with the names and terminology you prefer.
 
 You can manage term lists per novel, import and export your lists, catch duplicates automatically, and — if you also use [WTR Lab Term Inconsistency Finder](https://github.com/MasuRii/wtr-term-inconsistency-finder) — share saved terms between the two scripts at runtime without any manual file swapping.
