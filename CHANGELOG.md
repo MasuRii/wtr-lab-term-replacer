@@ -8,6 +8,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 No unreleased changes.
 
+## [5.6.0] - 2026-05-01
+
+### Added
+- Added the Term Discovery Assistant for current-chapter candidate picking, novel-wide WTR term search/autocomplete, and explicit user-confirmed term saving.
+- Added popularity-based replacement suggestions when WTR term identifiers are available, with graceful fallback when APIs or identifiers are unavailable.
+- Added pure parsing, sanitization, and ranking tests for discovered term metadata and popularity responses.
+
+### Changed
+- Cached only sanitized discovery metadata with short TTLs and refresh controls; raw chapter bodies and users arrays are not stored or displayed.
+
+## [5.5.1] - 2026-05-01
+
+### Changed
+- Added standard Shields.io badges to the README: version, license, TypeScript, Webpack, GitHub issues, and GitHub stars.
+- Updated versioning references in the README to reflect the new patch release.
+
 ## [5.5.0] - 2026-05-01
 
 ### Changed

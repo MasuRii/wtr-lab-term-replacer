@@ -35,6 +35,7 @@ Grab the latest `.user.js` file from the `dist/` folder (or from the [Releases p
 - **Import and export** — back up your term lists or share them as JSON.
 - **Duplicate detection** — the script warns you when a new term conflicts with an existing one.
 - **Finder bridge** — if WTR Lab Term Inconsistency Finder is also running, it can read your saved terms directly. No import/export step needed.
+- **Term Discovery Assistant** — discover current-chapter candidates, search WTR novel-wide terms, and choose popular replacement suggestions before saving.
 
 ## Building from Source
 
@@ -87,6 +88,8 @@ The source is TypeScript, bundled by Webpack into standard JavaScript userscript
 | `config.ts` | Constants and configuration |
 | `duplicates.ts` | Finding conflicting term entries |
 | `utils.ts` | Small helper functions |
+| `termDiscovery.ts` | Same-origin WTR API fetching and sanitized discovery caches |
+| `termDiscoveryHelpers.ts` | Pure parsing, sanitization, and ranking helpers for discovered terms |
 
 ## Finder Bridge (Advanced)
 
@@ -96,11 +99,11 @@ This is handled automatically. Just have both scripts installed and active on th
 
 ## Privacy
 
-All term data stays in your browser through the userscript manager's storage. Nothing is sent to external servers. The only network request is a Google Fonts import used by the script's UI.
+All saved term data stays in your browser through the userscript manager's storage. The Term Discovery Assistant uses same-origin WTR-Lab reader APIs only when you open or refresh discovery/autocomplete data. It stores sanitized term metadata with short TTLs, never raw chapter bodies, and never users arrays or personal identifiers from popularity responses.
 
 ## Versioning
 
-The current version is **v5.5.0**. Version info is kept in `config/versions.js`, and `npm run version:update` syncs it across the package metadata and generated source files.
+The current version is **v5.6.0**. Version info is kept in `config/versions.js`, and `npm run version:update` syncs it across the package metadata and generated source files.
 
 See [CHANGELOG.md](CHANGELOG.md) for the full release history.
 
