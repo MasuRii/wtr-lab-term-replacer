@@ -22,6 +22,15 @@ export const state: any = {
 	processingQueue: new Set(),
 	isProcessingInProgress: false,
 	observedMenuContainers: new WeakSet(),
+	termDiscovery: {
+		chapterCandidates: [],
+		novelTerms: [],
+		replacementSuggestions: [],
+		autocompleteCandidates: [],
+		selectedCandidate: null,
+		status: "Idle",
+		lastSearch: "",
+	},
 }
 
 // Function to initialize novel slug - should be called after utils is loaded

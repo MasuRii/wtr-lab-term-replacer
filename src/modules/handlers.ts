@@ -27,12 +27,29 @@ import { reprocessCurrentChapter } from "./observer"
 import { computeDupGroups, updateDupModeAfterChange } from "./duplicates"
 import { log } from "./utils"
 import { performReplacements, revertAllReplacements } from "./engine"
+import {
+	DiscoveredTermCandidate,
+	ReplacementSuggestion,
+	getDiscoveryCandidateKey,
+	isReplacementSuggestionRequestCurrent,
+} from "./termDiscoveryHelpers"
+import {
+	hasPreferenceIdentifiers,
+	loadCurrentChapterCandidates,
+	loadNovelTermEntries,
+	loadReplacementSuggestions,
+} from "./termDiscovery"
 import { getVersion } from "../../config/versions"
 
 // Export hideUIPanel function that can be called from UI
 export function hideUIPanel() {
 	log(state.globalSettings, "WTR Term Replacer: UI panel hide requested")
 	uiHideUIPanel()
+}
+
+export function switchToDiscoveryAssistant() {
+	switchTab("discover")
+	initializeTermDiscovery()
 }
 
 export function validateRegex(pattern) {
@@ -53,6 +70,394 @@ export function validateRegexSilent(pattern) {
 		return { isValid: true, error: null }
 	} catch (e) {
 		return { isValid: false, error: e.message }
+	}
+}
+
+function ensureDiscoveryState() {
+	if (!state.termDiscovery) {
+		state.termDiscovery = {
+			chapterCandidates: [],
+			novelTerms: [],
+			replacementSuggestions: [],
+			autocompleteCandidates: [],
+			selectedCandidate: null,
+			status: "Idle",
+			lastSearch: "",
+		}
+	}
+	return state.termDiscovery
+}
+
+function setDiscoveryStatus(message: string) {
+	ensureDiscoveryState().status = message
+	const statusEl = document.getElementById("wtr-discovery-status")
+	if (statusEl) {
+		statusEl.textContent = message
+	}
+}
+
+function createTermCandidateItem(candidate: DiscoveredTermCandidate, sourceType: string, index: number): HTMLLIElement {
+	const li = document.createElement("li")
+	li.className = "wtr-discovery-result-item"
+
+	const details = document.createElement("div")
+	details.className = "wtr-discovery-result-details"
+
+	const termText = document.createElement("strong")
+	termText.textContent = candidate.term
+	details.appendChild(termText)
+
+	if (candidate.replacement) {
+		const replacementText = document.createElement("span")
+		replacementText.className = "wtr-discovery-replacement-preview"
+		replacementText.textContent = ` → ${candidate.replacement}`
+		details.appendChild(replacementText)
+	}
+
+	const meta = document.createElement("small")
+	const metaParts = [`${candidate.source === "chapter" ? "chapter" : "novel"} candidate`]
+	if (candidate.count > 0) {
+		metaParts.push(candidate.source === "chapter" ? `${candidate.count} matches` : `score ${candidate.count}`)
+	}
+	if (hasPreferenceIdentifiers(candidate)) {
+		metaParts.push("popularity available")
+	}
+	meta.textContent = metaParts.join(" • ")
+	details.appendChild(meta)
+
+	const button = document.createElement("button")
+	button.type = "button"
+	button.className = "btn btn-primary btn-sm wtr-discovery-use-btn"
+	button.dataset.sourceType = sourceType
+	button.dataset.index = String(index)
+	button.textContent = "Use"
+
+	li.appendChild(details)
+	li.appendChild(button)
+	return li
+}
+
+function renderCandidateList(containerId: string, candidates: DiscoveredTermCandidate[], sourceType: string, emptyText: string) {
+	const list = document.getElementById(containerId)
+	if (!list) {
+		return
+	}
+	list.textContent = ""
+	if (candidates.length === 0) {
+		const empty = document.createElement("li")
+		empty.className = "wtr-discovery-empty"
+		empty.textContent = emptyText
+		list.appendChild(empty)
+		return
+	}
+	const fragment = document.createDocumentFragment()
+	candidates.forEach((candidate, index) => {
+		fragment.appendChild(createTermCandidateItem(candidate, sourceType, index))
+	})
+	list.appendChild(fragment)
+}
+
+function getFilteredNovelTerms(query: string): DiscoveredTermCandidate[] {
+	const discovery = ensureDiscoveryState()
+	const normalizedQuery = query.trim().toLocaleLowerCase()
+	const novelTerms = discovery.novelTerms as DiscoveredTermCandidate[]
+	if (!normalizedQuery) {
+		return novelTerms.slice(0, 20)
+	}
+	return novelTerms
+		.filter(
+			(candidate) =>
+				candidate.term.toLocaleLowerCase().includes(normalizedQuery) ||
+				(candidate.replacement || "").toLocaleLowerCase().includes(normalizedQuery),
+		)
+		.slice(0, 30)
+}
+
+function renderDiscoveryResults() {
+	const discovery = ensureDiscoveryState()
+	renderCandidateList(
+		"wtr-current-chapter-candidates",
+		discovery.chapterCandidates as DiscoveredTermCandidate[],
+		"chapter",
+		"No current-chapter candidates loaded yet.",
+	)
+	renderCandidateList(
+		"wtr-novel-term-results",
+		getFilteredNovelTerms(discovery.lastSearch || ""),
+		"novel",
+		"No novel-wide terms match this search.",
+	)
+	setDiscoveryStatus(discovery.status || "Idle")
+}
+
+function renderAddTermAutocomplete(candidates: DiscoveredTermCandidate[]) {
+	const discovery = ensureDiscoveryState()
+	const container = document.getElementById("wtr-add-term-autocomplete-results")
+	if (!container) {
+		discovery.autocompleteCandidates = []
+		return
+	}
+	container.textContent = ""
+	discovery.autocompleteCandidates = candidates.slice(0, 8)
+	if (discovery.autocompleteCandidates.length === 0) {
+		return
+	}
+	const fragment = document.createDocumentFragment()
+	;(discovery.autocompleteCandidates as DiscoveredTermCandidate[]).forEach((candidate, index) => {
+		const button = document.createElement("button")
+		button.type = "button"
+		button.className = "wtr-autocomplete-option"
+		button.dataset.index = String(index)
+		button.textContent = candidate.replacement ? `${candidate.term} → ${candidate.replacement}` : candidate.term
+		fragment.appendChild(button)
+	})
+	container.appendChild(fragment)
+}
+
+function renderReplacementSuggestions(suggestions: ReplacementSuggestion[], message = "") {
+	const container = document.getElementById("wtr-replacement-suggestions")
+	if (!container) {
+		return
+	}
+	container.textContent = ""
+	if (message) {
+		const messageEl = document.createElement("small")
+		messageEl.textContent = message
+		container.appendChild(messageEl)
+		return
+	}
+	if (suggestions.length === 0) {
+		return
+	}
+	const label = document.createElement("small")
+	label.textContent = "Popular replacements:"
+	container.appendChild(label)
+	const buttonWrap = document.createElement("div")
+	buttonWrap.className = "wtr-replacement-suggestion-buttons"
+	suggestions.forEach((suggestion) => {
+		const button = document.createElement("button")
+		button.type = "button"
+		button.className = "btn btn-secondary btn-sm wtr-replacement-suggestion-btn"
+		button.dataset.replacement = suggestion.replacement
+		button.textContent = suggestion.count > 0 ? `${suggestion.replacement} (${suggestion.count})` : suggestion.replacement
+		buttonWrap.appendChild(button)
+	})
+	container.appendChild(buttonWrap)
+}
+
+function findNovelCandidateByTerm(term: string): DiscoveredTermCandidate | null {
+	const normalizedTerm = term.trim().toLocaleLowerCase()
+	if (!normalizedTerm) {
+		return null
+	}
+	const discovery = ensureDiscoveryState()
+	return (
+		(discovery.novelTerms as DiscoveredTermCandidate[]).find(
+			(candidate) => candidate.term.toLocaleLowerCase() === normalizedTerm,
+		) || null
+	)
+}
+
+let replacementSuggestionRequestId = 0
+
+function isActiveReplacementSuggestionRequest(
+	requestId: number,
+	candidate: DiscoveredTermCandidate | null,
+	inputValue: string,
+): boolean {
+	const originalInput = document.getElementById("wtr-original")
+	const currentInputValue = originalInput ? originalInput.value.trim() : ""
+	const discovery = ensureDiscoveryState()
+	return isReplacementSuggestionRequestCurrent(
+		requestId,
+		replacementSuggestionRequestId,
+		getDiscoveryCandidateKey(candidate),
+		getDiscoveryCandidateKey(discovery.selectedCandidate as DiscoveredTermCandidate | null),
+		inputValue,
+		currentInputValue,
+	)
+}
+
+async function updateReplacementSuggestionsForCandidate(candidate: DiscoveredTermCandidate | null) {
+	const discovery = ensureDiscoveryState()
+	discovery.selectedCandidate = candidate
+	const requestId = ++replacementSuggestionRequestId
+	const originalInput = document.getElementById("wtr-original")
+	const inputValue = originalInput ? originalInput.value.trim() : ""
+	if (!candidate) {
+		discovery.replacementSuggestions = []
+		renderReplacementSuggestions([])
+		return
+	}
+	if (!hasPreferenceIdentifiers(candidate)) {
+		discovery.replacementSuggestions = []
+		renderReplacementSuggestions([], "No popularity data is available for this term.")
+		return
+	}
+	try {
+		const suggestions = await loadReplacementSuggestions(candidate)
+		if (!isActiveReplacementSuggestionRequest(requestId, candidate, inputValue)) {
+			return
+		}
+		ensureDiscoveryState().replacementSuggestions = suggestions
+		renderReplacementSuggestions(suggestions, suggestions.length ? "" : "No popular replacements found yet.")
+	} catch (error) {
+		if (!isActiveReplacementSuggestionRequest(requestId, candidate, inputValue)) {
+			return
+		}
+		log(state.globalSettings, "WTR Term Replacer: Replacement suggestions unavailable", error)
+		renderReplacementSuggestions([], "Popularity suggestions are unavailable right now.")
+	}
+}
+
+export function clearDiscoveryFormState() {
+	if (autocompleteTimeout) {
+		clearTimeout(autocompleteTimeout)
+		autocompleteTimeout = null
+	}
+	const discovery = ensureDiscoveryState()
+	discovery.autocompleteCandidates = []
+	discovery.replacementSuggestions = []
+	discovery.selectedCandidate = null
+	replacementSuggestionRequestId++
+	const autocompleteContainer = document.getElementById("wtr-add-term-autocomplete-results")
+	if (autocompleteContainer) {
+		autocompleteContainer.textContent = ""
+	}
+	const suggestionsContainer = document.getElementById("wtr-replacement-suggestions")
+	if (suggestionsContainer) {
+		suggestionsContainer.textContent = ""
+	}
+}
+
+async function chooseDiscoveryCandidate(candidate: DiscoveredTermCandidate | null) {
+	if (!candidate) {
+		return
+	}
+	showUIPanel()
+	showFormView()
+	const originalInput = document.getElementById("wtr-original")
+	const replacementInput = document.getElementById("wtr-replacement")
+	originalInput.value = candidate.term
+	if (candidate.replacement) {
+		replacementInput.value = candidate.replacement
+	}
+	originalInput.dispatchEvent(new Event("input", { bubbles: true }))
+	replacementInput.dispatchEvent(new Event("input", { bubbles: true }))
+	replacementInput.focus()
+	await updateReplacementSuggestionsForCandidate(candidate)
+}
+
+let autocompleteTimeout: ReturnType<typeof setTimeout> | null = null
+
+export async function handleDiscoveryRefreshChapter() {
+	setDiscoveryStatus("Loading current-chapter candidates...")
+	try {
+		const candidates = await loadCurrentChapterCandidates(true)
+		ensureDiscoveryState().chapterCandidates = candidates
+		setDiscoveryStatus(candidates.length ? `Loaded ${candidates.length} current-chapter candidates.` : "No chapter candidates found.")
+	} catch (error) {
+		log(state.globalSettings, "WTR Term Replacer: Current-chapter discovery failed", error)
+		setDiscoveryStatus("Current-chapter API data is unavailable right now.")
+	} finally {
+		renderDiscoveryResults()
+	}
+}
+
+export async function handleDiscoveryRefreshNovel() {
+	setDiscoveryStatus("Loading novel-wide term data...")
+	try {
+		const candidates = await loadNovelTermEntries(true)
+		ensureDiscoveryState().novelTerms = candidates
+		setDiscoveryStatus(candidates.length ? `Loaded ${candidates.length} novel-wide terms.` : "No novel-wide terms found.")
+	} catch (error) {
+		log(state.globalSettings, "WTR Term Replacer: Novel-wide discovery failed", error)
+		setDiscoveryStatus("Novel-wide term API data is unavailable right now.")
+	} finally {
+		renderDiscoveryResults()
+	}
+}
+
+export function handleDiscoverySearch(event) {
+	ensureDiscoveryState().lastSearch = event.target.value || ""
+	renderDiscoveryResults()
+}
+
+export function handleDiscoveryCandidateClick(event) {
+	const button = event.target.closest(".wtr-discovery-use-btn")
+	if (!button) {
+		return
+	}
+	const discovery = ensureDiscoveryState()
+	const sourceType = button.dataset.sourceType
+	const index = Number(button.dataset.index)
+	const candidates = sourceType === "chapter" ? discovery.chapterCandidates : getFilteredNovelTerms(discovery.lastSearch || "")
+	chooseDiscoveryCandidate(candidates[index] || null)
+}
+
+export async function initializeTermDiscovery() {
+	const discovery = ensureDiscoveryState()
+	if ((discovery.novelTerms as DiscoveredTermCandidate[]).length === 0) {
+		try {
+			discovery.novelTerms = await loadNovelTermEntries(false)
+		} catch (error) {
+			log(state.globalSettings, "WTR Term Replacer: Cached novel-wide discovery unavailable", error)
+		}
+	}
+	renderDiscoveryResults()
+}
+
+export function handleAddTermAutocompleteInput(event) {
+	if (autocompleteTimeout) {
+		clearTimeout(autocompleteTimeout)
+	}
+	autocompleteTimeout = setTimeout(async () => {
+		const query = event.target.value || ""
+		const discovery = ensureDiscoveryState()
+		const selectedCandidate = discovery.selectedCandidate as DiscoveredTermCandidate | null
+		if (selectedCandidate && selectedCandidate.term === query.trim()) {
+			renderAddTermAutocomplete([])
+			return
+		}
+		if ((discovery.novelTerms as DiscoveredTermCandidate[]).length === 0) {
+			try {
+				discovery.novelTerms = await loadNovelTermEntries(false)
+			} catch (error) {
+				log(state.globalSettings, "WTR Term Replacer: Add-term autocomplete unavailable", error)
+			}
+		}
+		const candidates = getFilteredNovelTerms(query)
+		renderAddTermAutocomplete(query.trim() ? candidates : [])
+		updateReplacementSuggestionsForCandidate(findNovelCandidateByTerm(query))
+	}, 250)
+}
+
+export function handleAddTermAutocompleteClick(event) {
+	const button = event.target.closest(".wtr-autocomplete-option")
+	if (!button) {
+		return
+	}
+	const container = document.getElementById("wtr-add-term-autocomplete-results")
+	const discovery = ensureDiscoveryState()
+	const candidates = discovery.autocompleteCandidates as DiscoveredTermCandidate[]
+	const candidate = candidates[Number(button.dataset.index)] || null
+	chooseDiscoveryCandidate(candidate)
+	discovery.autocompleteCandidates = []
+	if (container) {
+		container.textContent = ""
+	}
+}
+
+export function handleReplacementSuggestionClick(event) {
+	const button = event.target.closest(".wtr-replacement-suggestion-btn")
+	if (!button) {
+		return
+	}
+	const replacementInput = document.getElementById("wtr-replacement")
+	if (replacementInput) {
+		replacementInput.value = button.dataset.replacement || ""
+		replacementInput.dispatchEvent(new Event("input", { bubbles: true }))
+		replacementInput.focus()
 	}
 }
 
@@ -109,6 +514,7 @@ export async function handleSaveTerm() {
 	document.getElementById("wtr-is-regex").checked = false
 	document.getElementById("wtr-whole-word").checked = false
 	document.getElementById("wtr-save-btn").textContent = "Save Term"
+	clearDiscoveryFormState()
 
 	renderTermList(state.currentSearchValue)
 
@@ -575,6 +981,9 @@ export function handleTabSwitch(e) {
 		restoreTermListLocation()
 	} else {
 		clearTermList()
+		if (targetTab === "discover") {
+			initializeTermDiscovery()
+		}
 	}
 }
 

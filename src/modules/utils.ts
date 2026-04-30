@@ -1,13 +1,46 @@
 // Utility functions for WTR Lab Term Replacer
 import { getVersion } from "../../config/versions"
 
-export function getNovelSlug() {
-	let match = window.location.pathname.match(/novel\/\d+\/([^/]+)/)
-	if (match) {
-		return match[1]
+export interface ReaderUrlContext {
+	lang: string
+	rawId: string | null
+	novelSlug: string | null
+	chapterSlug: string | null
+}
+
+export function getReaderContextFromPath(pathname = window.location.pathname): ReaderUrlContext {
+	const parts = pathname.split("/").filter(Boolean)
+	const novelIndex = parts.indexOf("novel")
+	if (novelIndex >= 0) {
+		return {
+			lang: novelIndex > 0 ? parts[0] || "en" : "en",
+			rawId: parts[novelIndex + 1] || null,
+			novelSlug: parts[novelIndex + 2] || null,
+			chapterSlug: parts[novelIndex + 3] || null,
+		}
 	}
-	match = window.location.pathname.match(/serie-\d+\/([^/]+)/)
-	return match ? match[1] : null
+
+	const serieIndex = parts.findIndex((part) => /^serie-\d+$/.test(part))
+	if (serieIndex >= 0) {
+		const rawId = parts[serieIndex].replace(/^serie-/, "") || null
+		return {
+			lang: serieIndex > 0 ? parts[0] || "en" : "en",
+			rawId,
+			novelSlug: parts[serieIndex + 1] || null,
+			chapterSlug: parts[serieIndex + 2] || null,
+		}
+	}
+
+	return {
+		lang: parts[0] || "en",
+		rawId: null,
+		novelSlug: null,
+		chapterSlug: null,
+	}
+}
+
+export function getNovelSlug() {
+	return getReaderContextFromPath().novelSlug
 }
 
 export function escapeRegExp(str) {

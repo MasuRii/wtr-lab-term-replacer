@@ -18,6 +18,7 @@ const UI_HTML = `
     <div class="wtr-replacer-tabs">
         <button class="wtr-replacer-tab-btn active" data-tab="terms">Terms List</button>
         <button class="wtr-replacer-tab-btn" data-tab="add">Add/Edit Term</button>
+        <button class="wtr-replacer-tab-btn" data-tab="discover">Discover Terms</button>
         <button class="wtr-replacer-tab-btn" data-tab="io">Import/Export</button>
     </div>
     <div class="wtr-replacer-content">
@@ -50,10 +51,12 @@ const UI_HTML = `
             <div class="wtr-replacer-form-group">
                 <label for="wtr-original">Original Text</label>
                 <textarea id="wtr-original" rows="1"></textarea>
+                <div id="wtr-add-term-autocomplete-results" class="wtr-add-term-autocomplete-results" aria-live="polite"></div>
             </div>
             <div class="wtr-replacer-form-group">
                 <label for="wtr-replacement">Replacement Text</label>
                 <input type="text" id="wtr-replacement">
+                <div id="wtr-replacement-suggestions" class="wtr-replacement-suggestions" aria-live="polite"></div>
             </div>
             <div class="wtr-replacer-form-group">
                 <label><input type="checkbox" id="wtr-case-sensitive"> Case Sensitive</label>
@@ -61,6 +64,28 @@ const UI_HTML = `
                 <label><input type="checkbox" id="wtr-whole-word" disabled> Whole Word Only</label>
             </div>
             <button id="wtr-save-btn" class="btn btn-primary">Save Term</button>
+        </div>
+        <div id="wtr-tab-discover" class="wtr-replacer-tab-content">
+            <div class="wtr-discovery-header">
+                <h3>Term Discovery Assistant</h3>
+                <p>Load WTR reader data, choose a candidate, then confirm it with Save Term. Nothing is saved automatically.</p>
+                <div class="wtr-discovery-actions">
+                    <button id="wtr-refresh-chapter-terms-btn" class="btn btn-secondary">Refresh Current Chapter</button>
+                    <button id="wtr-refresh-novel-terms-btn" class="btn btn-secondary">Refresh Novel Terms</button>
+                </div>
+                <small id="wtr-discovery-status">Idle</small>
+            </div>
+            <div class="wtr-discovery-grid">
+                <section class="wtr-discovery-section">
+                    <h4>Current Chapter Candidates</h4>
+                    <ul id="wtr-current-chapter-candidates" class="wtr-discovery-result-list"></ul>
+                </section>
+                <section class="wtr-discovery-section">
+                    <h4>Novel-wide Search</h4>
+                    <input type="text" id="wtr-discovery-search" class="wtr-replacer-search-bar" placeholder="Search WTR novel terms...">
+                    <ul id="wtr-novel-term-results" class="wtr-discovery-result-list"></ul>
+                </section>
+            </div>
         </div>
         <div id="wtr-tab-io" class="wtr-replacer-tab-content">
             <input type="file" id="wtr-file-input" accept=".json" style="display: none;">
@@ -181,6 +206,32 @@ const UI_CSS = `
     .wtr-replacer-ui .btn-success { color: #fff; background-color: var(--bs-success); border-color: var(--bs-success); }
     .wtr-replacer-ui .btn-warning { color: #000; background-color: var(--bs-warning); border-color: var(--bs-warning); }
     .wtr-replacer-ui .btn-info { color: #fff; background-color: var(--bs-info); border-color: var(--bs-info); }
+    .wtr-replacer-ui .btn-sm { padding: 0.25rem 0.5rem; font-size: 0.875rem; }
+
+    /* --- Term Discovery Assistant --- */
+    .wtr-discovery-header { margin-bottom: 1rem; }
+    .wtr-discovery-header h3 { margin-top: 0; margin-bottom: 0.5rem; }
+    .wtr-discovery-header p { margin: 0 0 0.75rem; font-size: 0.9rem; color: var(--bs-secondary-color); }
+    .wtr-discovery-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.5rem; }
+    .wtr-discovery-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+    .wtr-discovery-section h4 { margin: 0 0 0.5rem; }
+    .wtr-discovery-result-list { list-style: none; padding: 0; margin: 0.75rem 0 0; display: flex; flex-direction: column; gap: 0.5rem; }
+    .wtr-discovery-result-item {
+        display: flex; justify-content: space-between; align-items: center; gap: 0.75rem;
+        border: 1px solid var(--bs-border-color); border-radius: var(--bs-border-radius);
+        background-color: var(--bs-secondary-bg-subtle); padding: 0.625rem;
+    }
+    .wtr-discovery-result-details { display: flex; flex-direction: column; gap: 0.25rem; min-width: 0; word-break: break-word; }
+    .wtr-discovery-replacement-preview { color: var(--bs-success); }
+    .wtr-discovery-empty { color: var(--bs-secondary-color); font-size: 0.9rem; }
+    .wtr-add-term-autocomplete-results { display: flex; flex-direction: column; gap: 0.25rem; margin-top: 0.35rem; }
+    .wtr-autocomplete-option {
+        text-align: left; border: 1px solid var(--bs-border-color); border-radius: var(--bs-border-radius);
+        background: var(--bs-secondary-bg-subtle); color: var(--bs-body-color); padding: 0.35rem 0.5rem; cursor: pointer;
+    }
+    .wtr-autocomplete-option:hover { border-color: var(--bs-primary); }
+    .wtr-replacement-suggestions { margin-top: 0.35rem; }
+    .wtr-replacement-suggestion-buttons { display: flex; gap: 0.35rem; flex-wrap: wrap; margin-top: 0.35rem; }
 
     /* --- Term List --- */
     .wtr-replacer-list-controls {
@@ -301,6 +352,10 @@ const UI_CSS = `
             justify-content: center;
         }
 
+        .wtr-discovery-grid {
+            grid-template-columns: 1fr;
+        }
+
         .wtr-pagination-controls {
             justify-content: center;
             gap: 0.125rem;
@@ -355,6 +410,13 @@ export function createUI() {
 	uiContainer.querySelector(".wtr-replacer-close-btn").addEventListener("click", Handlers.hideUIPanel)
 	uiContainer.querySelector("#wtr-disable-all").addEventListener("change", Handlers.handleDisableToggle)
 	uiContainer.querySelector("#wtr-save-btn").addEventListener("click", Handlers.handleSaveTerm)
+	uiContainer.querySelector("#wtr-refresh-chapter-terms-btn").addEventListener("click", Handlers.handleDiscoveryRefreshChapter)
+	uiContainer.querySelector("#wtr-refresh-novel-terms-btn").addEventListener("click", Handlers.handleDiscoveryRefreshNovel)
+	uiContainer.querySelector("#wtr-discovery-search").addEventListener("input", Handlers.handleDiscoverySearch)
+	uiContainer.querySelector("#wtr-current-chapter-candidates").addEventListener("click", Handlers.handleDiscoveryCandidateClick)
+	uiContainer.querySelector("#wtr-novel-term-results").addEventListener("click", Handlers.handleDiscoveryCandidateClick)
+	uiContainer.querySelector("#wtr-add-term-autocomplete-results").addEventListener("click", Handlers.handleAddTermAutocompleteClick)
+	uiContainer.querySelector("#wtr-replacement-suggestions").addEventListener("click", Handlers.handleReplacementSuggestionClick)
 	uiContainer.querySelector("#wtr-delete-selected-btn").addEventListener("click", Handlers.handleDeleteSelected)
 	uiContainer.querySelector("#wtr-search-bar").addEventListener("input", Handlers.handleSearch)
 	uiContainer.querySelector(".wtr-replacer-term-list").addEventListener("click", Handlers.handleListInteraction)
@@ -417,6 +479,7 @@ export function createUI() {
 	}
 
 	originalTextarea.addEventListener("input", autoResizeTextarea)
+	originalTextarea.addEventListener("input", Handlers.handleAddTermAutocompleteInput)
 	originalTextarea.addEventListener("focus", autoResizeTextarea)
 
 	// Real-time regex validation system
@@ -618,16 +681,59 @@ export function renderTermList(filter = "") {
 			const li = document.createElement("li")
 			li.className = "wtr-replacer-term-item"
 			li.dataset.id = term.id
-			li.innerHTML = `
-        <input type="checkbox" class="wtr-replacer-term-select" data-id="${term.id}">
-        <div class="wtr-replacer-term-details">
-          <div class="wtr-replacer-term-text">
-            <span class="wtr-term-original">${term.original}</span> → <span class="wtr-term-replacement">${term.replacement}</span>
-          </div>
-          <div>${term.caseSensitive ? "<small>CS</small>" : ""} ${term.isRegex ? "<small>RX</small>" : ""} ${term.wholeWord ? "<small>WW</small>" : ""}</div>
-        </div>
-        <div><button class="btn btn-secondary btn-sm wtr-edit-btn" data-id="${term.id}">Edit</button></div>
-      `
+
+			const checkbox = document.createElement("input")
+			checkbox.type = "checkbox"
+			checkbox.className = "wtr-replacer-term-select"
+			checkbox.dataset.id = term.id
+			li.appendChild(checkbox)
+
+			const details = document.createElement("div")
+			details.className = "wtr-replacer-term-details"
+
+			const termText = document.createElement("div")
+			termText.className = "wtr-replacer-term-text"
+			const originalSpan = document.createElement("span")
+			originalSpan.className = "wtr-term-original"
+			originalSpan.textContent = term.original
+			const replacementSpan = document.createElement("span")
+			replacementSpan.className = "wtr-term-replacement"
+			replacementSpan.textContent = term.replacement
+			termText.appendChild(originalSpan)
+			termText.appendChild(document.createTextNode(" → "))
+			termText.appendChild(replacementSpan)
+			details.appendChild(termText)
+
+			const flags = document.createElement("div")
+			if (term.caseSensitive) {
+				const badge = document.createElement("small")
+				badge.textContent = "CS"
+				flags.appendChild(badge)
+				flags.appendChild(document.createTextNode(" "))
+			}
+			if (term.isRegex) {
+				const badge = document.createElement("small")
+				badge.textContent = "RX"
+				flags.appendChild(badge)
+				flags.appendChild(document.createTextNode(" "))
+			}
+			if (term.wholeWord) {
+				const badge = document.createElement("small")
+				badge.textContent = "WW"
+				flags.appendChild(badge)
+			}
+			details.appendChild(flags)
+			li.appendChild(details)
+
+			const actionWrap = document.createElement("div")
+			const editButton = document.createElement("button")
+			editButton.type = "button"
+			editButton.className = "btn btn-secondary btn-sm wtr-edit-btn"
+			editButton.dataset.id = term.id
+			editButton.textContent = "Edit"
+			actionWrap.appendChild(editButton)
+			li.appendChild(actionWrap)
+
 			fragment.appendChild(li)
 		})
 		listEl.appendChild(fragment)
@@ -670,6 +776,9 @@ export function clearTermList() {
 }
 
 export function showFormView(term = null) {
+	if (!term) {
+		Handlers.clearDiscoveryFormState()
+	}
 	document.getElementById("wtr-term-id").value = term ? term.id : ""
 	document.getElementById("wtr-original").value = term ? term.original : ""
 	document.getElementById("wtr-replacement").value = term ? term.replacement : ""

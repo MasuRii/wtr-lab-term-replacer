@@ -253,6 +253,10 @@ async function main() {
 
 	log(state.globalSettings, "WTR Term Replacer: Registering menu commands...")
 	GM_registerMenuCommand("Term Replacer Settings", showUIPanel)
+	GM_registerMenuCommand("Term Discovery Assistant", () => {
+		showUIPanel()
+		Handlers.switchToDiscoveryAssistant()
+	})
 	GM_registerMenuCommand("Toggle Logging", Handlers.toggleLogging)
 
 	log(state.globalSettings, "WTR Term Replacer: Starting initial content detection...")
