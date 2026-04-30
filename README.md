@@ -1,12 +1,12 @@
 # WTR Lab Term Replacer
 
-[![Version](https://img.shields.io/badge/version-5.4.4-blue.svg)](https://github.com/MasuRii/wtr-lab-term-replacer-webpack)
+[![Version](https://img.shields.io/badge/version-5.4.5-blue.svg)](https://github.com/MasuRii/wtr-lab-term-replacer-webpack)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg)](#)
 [![JavaScript](https://img.shields.io/badge/JavaScript-ES6%2B-yellow.svg)](#)
 [![Webpack](https://img.shields.io/badge/Webpack-5.x-orange.svg)](#)
 
-A modular, Webpack-powered version of the WTR Lab Term Replacer userscript. Features a dual-build system for performance and GreasyFork compliance, hot-reloading for development, and a modern, maintainable JavaScript codebase.
+A modular, Webpack-powered version of the WTR Lab Term Replacer userscript. Features a dual-build system for performance and GreasyFork compliance, hot-reloading for development, and a modern, maintainable JavaScript codebase. It also exposes a live runtime bridge so WTR Lab Term Inconsistency Finder can reuse the current novel's saved terms without requiring JSON export/import.
 
 ## 🎯 Project Overview
 
@@ -22,6 +22,7 @@ WTR Lab Term Replacer is an advanced userscript that enhances the reading experi
 - **🛡️ Robust Error Handling**: Comprehensive error recovery and logging
 - **🔄 Multi-Script Coordination**: Intelligent handling of script conflicts
 - **💾 Advanced State Management**: Persistent storage with session recovery
+- **🔗 Live Finder Integration**: Shares the current novel's saved term list directly with WTR Lab Term Inconsistency Finder at runtime
 
 ## 🚀 Quick Start
 

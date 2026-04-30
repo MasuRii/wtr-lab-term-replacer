@@ -4,6 +4,20 @@ All notable changes to the WTR Lab Term Replacer project will be documented in t
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.4.5] - 2026-04-04
+
+### Added
+- ✨ Live integration bridge for WTR Lab Term Inconsistency Finder so Finder can request the current novel's stored terms directly at runtime.
+- ✨ Global readiness marker for safe cross-userscript detection without relying only on DOM heuristics.
+
+### Changed
+- 🔄 Centralized term loading through a reusable `getTermsForSlug()` storage helper for both normal script initialization and external bridge requests.
+
+### Improved
+- 🔧 Finder + Term Replacer interoperability no longer requires exporting and re-importing JSON for the standard dual-script workflow.
+
+---
+
 ## [5.4.4] - 2025-11-19
 
 ### Fixed
