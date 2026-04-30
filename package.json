@@ -32,6 +32,7 @@
 		"build:devbundle": "npm run typecheck && webpack --config webpack.config.js --config-name dev --mode=development",
 		"dev": "webpack serve --config webpack.config.js --config-name dev --mode=development",
 		"typecheck": "tsc --noEmit",
+		"test": "node scripts/run-tests.js",
 		"version:update": "node scripts/update-versions.js update",
 		"version:check": "node scripts/update-versions.js check"
 	},
