@@ -1,6 +1,6 @@
 // Main entry point for WTR Lab Term Replacer
 import { createUI, showUIPanel } from "./modules/ui"
-import { loadData, loadGlobalSettings } from "./modules/storage"
+import { getTermsForSlug, loadData, loadGlobalSettings } from "./modules/storage"
 import { waitForInitialContent } from "./modules/observer"
 import { setNovelSlug, state } from "./modules/state"
 import * as Handlers from "./modules/handlers" // Import all handlers
@@ -149,6 +149,72 @@ function addDisableAllRobustness() {
 	log(state.globalSettings, "WTR Term Replacer: Enhanced disable functionality activated")
 }
 
+function registerExternalIntegrationBridge() {
+	if (window.__WTR_TERM_REPLACER_BRIDGE_REGISTERED__) {
+		const existingApi = window.WTR_LAB_TERM_REPLACER || {}
+		window.WTR_LAB_TERM_REPLACER = {
+			...existingApi,
+			ready: true,
+			bridgeVersion: 1,
+		}
+		return
+	}
+
+	window.__WTR_TERM_REPLACER_BRIDGE_REGISTERED__ = true
+	const existingApi = window.WTR_LAB_TERM_REPLACER || {}
+	window.WTR_LAB_TERM_REPLACER = {
+		...existingApi,
+		ready: true,
+		bridgeVersion: 1,
+	}
+
+	window.addEventListener("wtr:addTerm", (event) => {
+		const { original, replacement, isRegex } = event?.detail || {}
+		Handlers.addTermProgrammatically(original, replacement, isRegex)
+	})
+
+	window.addEventListener("wtr:requestTerms", async (event) => {
+		const requestId = event?.detail?.requestId
+		const requestedSlug = event?.detail?.novelSlug || state.novelSlug || getNovelSlug()
+
+		if (!requestId) {
+			return
+		}
+
+		try {
+			const terms = requestedSlug === state.novelSlug ? [...state.terms] : await getTermsForSlug(requestedSlug)
+
+			window.dispatchEvent(
+				new CustomEvent("wtr:termsResponse", {
+					detail: {
+						requestId,
+						novelSlug: requestedSlug,
+						terms,
+						source: "wtr-term-replacer",
+						success: true,
+					},
+				}),
+			)
+		} catch (error) {
+			log(state.globalSettings, "WTR Term Replacer: Failed to provide terms to external requester", error)
+			window.dispatchEvent(
+				new CustomEvent("wtr:termsResponse", {
+					detail: {
+						requestId,
+						novelSlug: requestedSlug,
+						terms: [],
+						source: "wtr-term-replacer",
+						success: false,
+						error: error instanceof Error ? error.message : String(error),
+					},
+				}),
+			)
+		}
+	})
+
+	log(state.globalSettings, "WTR Term Replacer: External integration bridge registered")
+}
+
 async function main() {
 	log(state.globalSettings, "WTR Term Replacer: Main function starting initialization...")
 
@@ -195,11 +261,7 @@ async function main() {
 	log(state.globalSettings, "WTR Term Replacer: Initialization completed successfully")
 }
 
+registerExternalIntegrationBridge()
+
 // Start the script
 main().catch((err) => console.error("WTR Term Replacer failed to start:", err))
-
-// Add custom event listener for programmatic term addition (equivalent to original lines 2444-2447)
-window.addEventListener("wtr:addTerm", (event) => {
-	const { original, replacement, isRegex } = event.detail
-	Handlers.addTermProgrammatically(original, replacement, isRegex)
-})

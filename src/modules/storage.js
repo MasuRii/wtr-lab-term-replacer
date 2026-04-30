@@ -74,15 +74,27 @@ export async function saveSearchFieldValue() {
 	}
 }
 
+export async function getTermsForSlug(slug) {
+	if (!slug) {
+		return []
+	}
+
+	const terms = await GM_getValue(`${C.TERMS_STORAGE_KEY_PREFIX}${slug}`, [])
+	if (!Array.isArray(terms)) {
+		return []
+	}
+
+	return terms.map((term) => ({
+		...term,
+		wholeWord: term.wholeWord ?? false,
+	}))
+}
+
 export async function loadData() {
 	try {
-		const TERMS_KEY = `${C.TERMS_STORAGE_KEY_PREFIX}${state.novelSlug}`
 		const SETTINGS_KEY = `${C.SETTINGS_STORAGE_KEY_PREFIX}${state.novelSlug}`
 
-		state.terms = await GM_getValue(TERMS_KEY, [])
-		state.terms.forEach((t) => {
-			t.wholeWord = t.wholeWord ?? false
-		})
+		state.terms = await getTermsForSlug(state.novelSlug)
 		const savedSettings = await GM_getValue(SETTINGS_KEY, {})
 		state.settings = { isDisabled: false, ...savedSettings }
 	} catch (e) {
