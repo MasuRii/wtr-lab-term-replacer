@@ -1,6 +1,6 @@
 # WTR Lab Term Replacer
 
-[![Version](https://img.shields.io/badge/version-5.6.0-blue.svg)](https://github.com/MasuRii/wtr-lab-term-replacer-webpack/releases)
+[![Version](https://img.shields.io/badge/version-5.7.0-blue.svg)](https://github.com/MasuRii/wtr-lab-term-replacer-webpack/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/MasuRii/wtr-lab-term-replacer-webpack/blob/main/LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-6.0-blue?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Built with Webpack](https://img.shields.io/badge/Built%20with-Webpack-8DD6F9?logo=webpack&logoColor=white)](https://webpack.js.org/)
@@ -35,7 +35,8 @@ Grab the latest `.user.js` file from the `dist/` folder (or from the [Releases p
 - **Import and export** — back up your term lists or share them as JSON.
 - **Duplicate detection** — the script warns you when a new term conflicts with an existing one.
 - **Finder bridge** — if WTR Lab Term Inconsistency Finder is also running, it can read your saved terms directly. No import/export step needed.
-- **Term Discovery Assistant** — discover current-chapter candidates, search WTR novel-wide terms, and choose popular replacement suggestions before saving.
+- **Smart suggestions** — click WTR's built-in term popovers or type an original value to get source/current/WTR/API/Google suggestions you can insert into Original Text or Replacement Text.
+- **Regex-friendly term building** — suggestion clicks and refreshes can build `|`-based regex alternatives, normalize slash or spaced separators, warn when regex-like text is saved with Regex off, and sort longer alternatives first.
 
 ## Building from Source
 
@@ -88,8 +89,8 @@ The source is TypeScript, bundled by Webpack into standard JavaScript userscript
 | `config.ts` | Constants and configuration |
 | `duplicates.ts` | Finding conflicting term entries |
 | `utils.ts` | Small helper functions |
-| `termDiscovery.ts` | Same-origin WTR API fetching and sanitized discovery caches |
-| `termDiscoveryHelpers.ts` | Pure parsing, sanitization, and ranking helpers for discovered terms |
+| `termDiscovery.ts` | Same-origin WTR term API fetching and sanitized suggestion caches |
+| `termDiscoveryHelpers.ts` | Pure parsing, sanitization, and ranking helpers for WTR term suggestions |
 
 ## Finder Bridge (Advanced)
 
@@ -99,11 +100,11 @@ This is handled automatically. Just have both scripts installed and active on th
 
 ## Privacy
 
-All saved term data stays in your browser through the userscript manager's storage. The Term Discovery Assistant uses same-origin WTR-Lab reader APIs only when you open or refresh discovery/autocomplete data. It stores sanitized term metadata with short TTLs, never raw chapter bodies, and never users arrays or personal identifiers from popularity responses.
+All saved term data stays in your browser through the userscript manager's storage. Suggestions use same-origin WTR-Lab term APIs only when needed, such as automatic lookups or Refresh Suggestions. The script stores sanitized term metadata with short TTLs, never raw chapter bodies, and never users arrays or personal identifiers from suggestion responses.
 
 ## Versioning
 
-The current version is **v5.6.0**. Version info is kept in `config/versions.js`, and `npm run version:update` syncs it across the package metadata and generated source files.
+The current version is **v5.7.0**. Version info is kept in `config/versions.js`, and `npm run version:update` syncs it across the package metadata and generated source files.
 
 See [CHANGELOG.md](CHANGELOG.md) for the full release history.
 

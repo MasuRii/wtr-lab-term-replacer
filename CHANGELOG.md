@@ -8,6 +8,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 No unreleased changes.
 
+## [5.7.0] - 2026-05-16
+
+### Added
+- Added WTR popover integration with a `+ Replacer Term` action that opens the Add/Edit form with WTR source, current, dictionary, Google, API, and field-derived suggestions.
+- Added field-aware suggestions that insert into whichever Add/Edit field was last focused, with source labels and existing-field indicators for Original Text and Replacement Text.
+- Added a `Refresh Suggestions` action that force-refreshes WTR novel term data, merges new suggestions with existing suggestions, and deduplicates the result.
+- Added regex usability warnings when regex-like original text is entered while `Use Regex` is disabled.
+
+### Changed
+- Reworked suggestions to use WTR reader term tuples as the primary source of alternatives when popularity preference APIs return no data.
+- Improved regex-original handling by normalizing slash or spaced separators into `|`, deduplicating alternatives, and sorting longer alternatives first.
+- Preserved suggestion lists across field edits, refreshes, and `Use Regex` toggles so existing choices remain visible.
+
+### Removed
+- Removed the Term Discovery Assistant tab, menu command, current-chapter candidate discovery, and related UI/state paths.
+- Removed the popover Quick Save action and all related save logic.
+
 ## [5.6.0] - 2026-05-01
 
 ### Added
