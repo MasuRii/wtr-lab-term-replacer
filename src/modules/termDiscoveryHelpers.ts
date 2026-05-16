@@ -3,6 +3,7 @@ export type DiscoverySource = "chapter" | "novel"
 export interface DiscoveredTermCandidate {
 	term: string
 	replacement?: string
+	replacementSuggestions?: string[]
 	source: DiscoverySource
 	count: number
 	sourceId?: string
@@ -13,6 +14,8 @@ export interface DiscoveredTermCandidate {
 export interface ReplacementSuggestion {
 	replacement: string
 	count: number
+	sourceLabel?: string
+	sourceRank?: number
 }
 
 export interface ReaderGetRequestContext {
@@ -276,14 +279,19 @@ function collectNovelTermEntries(payload: unknown, fallbackLang: string, sourceI
 	return nestedEntries
 }
 
-function firstTextFromArray(values: unknown[], maxLength = MAX_TERM_LENGTH): string | null {
+function textValuesFromArray(values: unknown[], maxLength = MAX_TERM_LENGTH): string[] {
+	const deduped = new Map<string, string>()
 	for (const value of values) {
 		const text = sanitizeApiText(value, maxLength)
 		if (text) {
-			return text
+			deduped.set(text, text)
 		}
 	}
-	return null
+	return Array.from(deduped.values())
+}
+
+function firstTextFromArray(values: unknown[], maxLength = MAX_TERM_LENGTH): string | null {
+	return textValuesFromArray(values, maxLength)[0] || null
 }
 
 function maxNumberValue(values: unknown[]): number {
@@ -371,6 +379,7 @@ export function parseNovelTermEntries(payload: unknown, lang = "en", limit = MAX
 	for (const { item, sourceId: inheritedSourceId, lang: entryLang } of entries) {
 		let term: string | null = null
 		let replacement: string | null = null
+		let replacementSuggestions: string[] = []
 		let count = 0
 		let sourceId = inheritedSourceId
 		let hash: string | undefined
@@ -379,7 +388,8 @@ export function parseNovelTermEntries(payload: unknown, lang = "en", limit = MAX
 		if (Array.isArray(item)) {
 			const replacements = Array.isArray(item[0]) ? item[0] : []
 			term = sanitizeApiText(item[1])
-			replacement = firstTextFromArray(replacements, MAX_REPLACEMENT_LENGTH)
+			replacementSuggestions = textValuesFromArray(replacements, MAX_REPLACEMENT_LENGTH)
+			replacement = replacementSuggestions[0] || null
 			count = maxNumberValue(item.slice(2))
 			hash = sanitizePreferenceHash(item[1])
 		} else if (isRecord(item)) {
@@ -411,6 +421,7 @@ export function parseNovelTermEntries(payload: unknown, lang = "en", limit = MAX
 		const candidate: DiscoveredTermCandidate = {
 			term,
 			replacement: replacement || undefined,
+			...(replacementSuggestions.length > 1 ? { replacementSuggestions } : {}),
 			source: "novel",
 			count,
 			sourceId,

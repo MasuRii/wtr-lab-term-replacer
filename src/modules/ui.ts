@@ -18,7 +18,6 @@ const UI_HTML = `
     <div class="wtr-replacer-tabs">
         <button class="wtr-replacer-tab-btn active" data-tab="terms">Terms List</button>
         <button class="wtr-replacer-tab-btn" data-tab="add">Add/Edit Term</button>
-        <button class="wtr-replacer-tab-btn" data-tab="discover">Discover Terms</button>
         <button class="wtr-replacer-tab-btn" data-tab="io">Import/Export</button>
     </div>
     <div class="wtr-replacer-content">
@@ -51,7 +50,8 @@ const UI_HTML = `
             <div class="wtr-replacer-form-group">
                 <label for="wtr-original">Original Text</label>
                 <textarea id="wtr-original" rows="1"></textarea>
-                <div id="wtr-add-term-autocomplete-results" class="wtr-add-term-autocomplete-results" aria-live="polite"></div>
+                <small id="wtr-regex-disabled-warning" class="wtr-regex-disabled-warning" style="display:none;">This looks like regex syntax, but Use Regex is off. It will be saved as plain text unless you enable Use Regex.</small>
+                <button type="button" id="wtr-refresh-suggestions-btn" class="btn btn-secondary btn-sm wtr-refresh-suggestions-btn">Refresh Suggestions</button>
             </div>
             <div class="wtr-replacer-form-group">
                 <label for="wtr-replacement">Replacement Text</label>
@@ -64,28 +64,6 @@ const UI_HTML = `
                 <label><input type="checkbox" id="wtr-whole-word" disabled> Whole Word Only</label>
             </div>
             <button id="wtr-save-btn" class="btn btn-primary">Save Term</button>
-        </div>
-        <div id="wtr-tab-discover" class="wtr-replacer-tab-content">
-            <div class="wtr-discovery-header">
-                <h3>Term Discovery Assistant</h3>
-                <p>Load WTR reader data, choose a candidate, then confirm it with Save Term. Nothing is saved automatically.</p>
-                <div class="wtr-discovery-actions">
-                    <button id="wtr-refresh-chapter-terms-btn" class="btn btn-secondary">Refresh Current Chapter</button>
-                    <button id="wtr-refresh-novel-terms-btn" class="btn btn-secondary">Refresh Novel Terms</button>
-                </div>
-                <small id="wtr-discovery-status">Idle</small>
-            </div>
-            <div class="wtr-discovery-grid">
-                <section class="wtr-discovery-section">
-                    <h4>Current Chapter Candidates</h4>
-                    <ul id="wtr-current-chapter-candidates" class="wtr-discovery-result-list"></ul>
-                </section>
-                <section class="wtr-discovery-section">
-                    <h4>Novel-wide Search</h4>
-                    <input type="text" id="wtr-discovery-search" class="wtr-replacer-search-bar" placeholder="Search WTR novel terms...">
-                    <ul id="wtr-novel-term-results" class="wtr-discovery-result-list"></ul>
-                </section>
-            </div>
         </div>
         <div id="wtr-tab-io" class="wtr-replacer-tab-content">
             <input type="file" id="wtr-file-input" accept=".json" style="display: none;">
@@ -184,6 +162,18 @@ const UI_CSS = `
         border-color: var(--bs-success) !important;
         background-color: rgba(var(--bs-success-rgb), 0.1) !important;
     }
+
+    .wtr-replacer-form-group .wtr-field-warning {
+        border-color: var(--bs-warning) !important;
+        background-color: rgba(var(--bs-warning-rgb), 0.12) !important;
+        box-shadow: 0 0 0 0.2rem rgba(var(--bs-warning-rgb), 0.2);
+    }
+
+    .wtr-regex-disabled-warning {
+        display: block;
+        margin-top: 0.35rem;
+        color: var(--bs-warning-text-emphasis, var(--bs-warning));
+    }
     
     .wtr-save-btn:disabled {
         opacity: 0.6;
@@ -208,30 +198,18 @@ const UI_CSS = `
     .wtr-replacer-ui .btn-info { color: #fff; background-color: var(--bs-info); border-color: var(--bs-info); }
     .wtr-replacer-ui .btn-sm { padding: 0.25rem 0.5rem; font-size: 0.875rem; }
 
-    /* --- Term Discovery Assistant --- */
-    .wtr-discovery-header { margin-bottom: 1rem; }
-    .wtr-discovery-header h3 { margin-top: 0; margin-bottom: 0.5rem; }
-    .wtr-discovery-header p { margin: 0 0 0.75rem; font-size: 0.9rem; color: var(--bs-secondary-color); }
-    .wtr-discovery-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.5rem; }
-    .wtr-discovery-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
-    .wtr-discovery-section h4 { margin: 0 0 0.5rem; }
-    .wtr-discovery-result-list { list-style: none; padding: 0; margin: 0.75rem 0 0; display: flex; flex-direction: column; gap: 0.5rem; }
-    .wtr-discovery-result-item {
-        display: flex; justify-content: space-between; align-items: center; gap: 0.75rem;
-        border: 1px solid var(--bs-border-color); border-radius: var(--bs-border-radius);
-        background-color: var(--bs-secondary-bg-subtle); padding: 0.625rem;
-    }
-    .wtr-discovery-result-details { display: flex; flex-direction: column; gap: 0.25rem; min-width: 0; word-break: break-word; }
-    .wtr-discovery-replacement-preview { color: var(--bs-success); }
-    .wtr-discovery-empty { color: var(--bs-secondary-color); font-size: 0.9rem; }
-    .wtr-add-term-autocomplete-results { display: flex; flex-direction: column; gap: 0.25rem; margin-top: 0.35rem; }
-    .wtr-autocomplete-option {
-        text-align: left; border: 1px solid var(--bs-border-color); border-radius: var(--bs-border-radius);
-        background: var(--bs-secondary-bg-subtle); color: var(--bs-body-color); padding: 0.35rem 0.5rem; cursor: pointer;
-    }
-    .wtr-autocomplete-option:hover { border-color: var(--bs-primary); }
+    .wtr-refresh-suggestions-btn { margin-top: 0.35rem; }
     .wtr-replacement-suggestions { margin-top: 0.35rem; }
     .wtr-replacement-suggestion-buttons { display: flex; gap: 0.35rem; flex-wrap: wrap; margin-top: 0.35rem; }
+    .wtr-replacement-suggestion-btn { display: inline-flex !important; align-items: center; gap: 0.35rem; }
+    .wtr-replacement-suggestion-btn.wtr-suggestion-existing {
+        background-color: var(--bs-success) !important;
+        border-color: var(--bs-success) !important;
+        color: #fff !important;
+    }
+    .wtr-replacement-suggestion-source { opacity: 0.85; font-size: 0.72rem; }
+    .wtr-replacer-popover-actions { display: flex; flex-direction: column; gap: 0.25rem; }
+    .wtr-replacer-popover-add-btn { white-space: nowrap; }
 
     /* --- Term List --- */
     .wtr-replacer-list-controls {
@@ -352,9 +330,6 @@ const UI_CSS = `
             justify-content: center;
         }
 
-        .wtr-discovery-grid {
-            grid-template-columns: 1fr;
-        }
 
         .wtr-pagination-controls {
             justify-content: center;
@@ -410,12 +385,7 @@ export function createUI() {
 	uiContainer.querySelector(".wtr-replacer-close-btn").addEventListener("click", Handlers.hideUIPanel)
 	uiContainer.querySelector("#wtr-disable-all").addEventListener("change", Handlers.handleDisableToggle)
 	uiContainer.querySelector("#wtr-save-btn").addEventListener("click", Handlers.handleSaveTerm)
-	uiContainer.querySelector("#wtr-refresh-chapter-terms-btn").addEventListener("click", Handlers.handleDiscoveryRefreshChapter)
-	uiContainer.querySelector("#wtr-refresh-novel-terms-btn").addEventListener("click", Handlers.handleDiscoveryRefreshNovel)
-	uiContainer.querySelector("#wtr-discovery-search").addEventListener("input", Handlers.handleDiscoverySearch)
-	uiContainer.querySelector("#wtr-current-chapter-candidates").addEventListener("click", Handlers.handleDiscoveryCandidateClick)
-	uiContainer.querySelector("#wtr-novel-term-results").addEventListener("click", Handlers.handleDiscoveryCandidateClick)
-	uiContainer.querySelector("#wtr-add-term-autocomplete-results").addEventListener("click", Handlers.handleAddTermAutocompleteClick)
+	uiContainer.querySelector("#wtr-refresh-suggestions-btn").addEventListener("click", Handlers.handleRefreshSuggestionsClick)
 	uiContainer.querySelector("#wtr-replacement-suggestions").addEventListener("click", Handlers.handleReplacementSuggestionClick)
 	uiContainer.querySelector("#wtr-delete-selected-btn").addEventListener("click", Handlers.handleDeleteSelected)
 	uiContainer.querySelector("#wtr-search-bar").addEventListener("input", Handlers.handleSearch)
@@ -439,6 +409,19 @@ export function createUI() {
 	uiContainer.querySelector("#wtr-prev-dup-btn").addEventListener("click", () => changeDupGroup(-1))
 	uiContainer.querySelector("#wtr-next-dup-btn").addEventListener("click", () => changeDupGroup(1))
 	uiContainer.querySelector("#wtr-exit-dup-btn").addEventListener("click", exitDupMode)
+	document.addEventListener("click", Handlers.handleWtrTextPatchClick, true)
+	document.addEventListener("click", Handlers.handleWtrPopoverAddTermClick)
+	const wtrPopoverObserver = new MutationObserver((mutations) => {
+		mutations.forEach((mutation) => {
+			mutation.addedNodes.forEach((node) => {
+				if (node instanceof Element) {
+					Handlers.enhanceWtrTermPopovers(node)
+				}
+			})
+		})
+	})
+	wtrPopoverObserver.observe(document.body, { childList: true, subtree: true })
+	Handlers.enhanceWtrTermPopovers(document)
 
 	// Add scroll event listener to save term list location
 	const contentArea = uiContainer.querySelector(".wtr-replacer-content")
@@ -456,11 +439,13 @@ export function createUI() {
 
 	// Character-based auto-resize for original text field
 	const regexCheckbox = uiContainer.querySelector("#wtr-is-regex")
+	const caseSensitiveCheckbox = uiContainer.querySelector("#wtr-case-sensitive")
 	const wholeWordCheckbox = uiContainer.querySelector("#wtr-whole-word")
 	regexCheckbox.addEventListener("change", (e) => {
 		wholeWordCheckbox.disabled = e.target.checked
 		if (e.target.checked) {
 			wholeWordCheckbox.checked = false
+			Handlers.normalizeOriginalRegexField()
 		}
 	})
 
@@ -479,22 +464,32 @@ export function createUI() {
 	}
 
 	originalTextarea.addEventListener("input", autoResizeTextarea)
-	originalTextarea.addEventListener("input", Handlers.handleAddTermAutocompleteInput)
+	originalTextarea.addEventListener("input", Handlers.handleReplacementSuggestionInput)
 	originalTextarea.addEventListener("focus", autoResizeTextarea)
+	originalTextarea.addEventListener("focus", Handlers.handleSuggestionTargetFocus)
+	regexCheckbox.addEventListener("change", () => Handlers.handleReplacementSuggestionInput({ target: originalTextarea, mergeExisting: true }))
+	caseSensitiveCheckbox.addEventListener("change", () => Handlers.handleReplacementSuggestionInput({ target: originalTextarea, mergeExisting: true }))
 
 	// Real-time regex validation system
 	const saveButton = uiContainer.querySelector("#wtr-save-btn")
 	const replacementInput = uiContainer.querySelector("#wtr-replacement")
+	replacementInput.addEventListener("focus", Handlers.handleSuggestionTargetFocus)
 
 	function updateValidationVisual(state) {
 		// Remove all validation classes
-		originalTextarea.classList.remove("wtr-field-invalid", "wtr-field-valid")
+		originalTextarea.classList.remove("wtr-field-invalid", "wtr-field-valid", "wtr-field-warning")
 
 		if (state === "invalid") {
 			originalTextarea.classList.add("wtr-field-invalid")
 		} else if (state === "valid") {
 			originalTextarea.classList.add("wtr-field-valid")
+		} else if (state === "warning") {
+			originalTextarea.classList.add("wtr-field-warning")
 		}
+	}
+
+	function looksLikeRegexSyntax(value) {
+		return /(^|[^\\])\|/.test(value) || /\\[bBdDsSwW]/.test(value) || /\[[^\]]+\]/.test(value) || /\([^)]*\|[^)]*\)/.test(value) || /\.\*/.test(value) || /[+*?{}^$]/.test(value)
 	}
 
 	function validateAndUpdateUI() {
@@ -502,10 +497,16 @@ export function createUI() {
 		const originalText = originalTextarea.value.trim()
 		const replacementText = replacementInput.value.trim()
 		const isValidInput = originalText.length > 0 && replacementText.length > 0
+		const regexWarning = document.getElementById("wtr-regex-disabled-warning")
+		const shouldWarnRegexDisabled = !isRegexEnabled && originalText.length > 0 && looksLikeRegexSyntax(originalText)
+
+		if (regexWarning) {
+			regexWarning.style.display = shouldWarnRegexDisabled ? "block" : "none"
+		}
 
 		if (!isRegexEnabled || originalText.length === 0) {
-			// Not a regex or empty field, clear validation state
-			updateValidationVisual(null)
+			// Not a regex or empty field, clear validation state unless the text looks like regex syntax.
+			updateValidationVisual(shouldWarnRegexDisabled ? "warning" : null)
 			saveButton.disabled = !isValidInput
 			return
 		}

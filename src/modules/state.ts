@@ -23,13 +23,9 @@ export const state: any = {
 	isProcessingInProgress: false,
 	observedMenuContainers: new WeakSet(),
 	termDiscovery: {
-		chapterCandidates: [],
 		novelTerms: [],
 		replacementSuggestions: [],
-		autocompleteCandidates: [],
 		selectedCandidate: null,
-		status: "Idle",
-		lastSearch: "",
 	},
 }
 
