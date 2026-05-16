@@ -1,13 +1,13 @@
 // ==UserScript==
 // @name WTR Lab Term Replacer
 // @description A modular, Webpack-powered TypeScript version of the WTR Lab Term Replacer userscript.
-// @version 5.6.0
+// @version 5.7.0
 // @author MasuRii
 // @homepage https://github.com/MasuRii/wtr-lab-term-replacer-webpack#readme
 // @supportURL https://github.com/MasuRii/wtr-lab-term-replacer-webpack/issues
 // @match https://wtr-lab.com/en/novel/*/*/*
 // @connect fonts.googleapis.com
-// @downloadURL https://github.com/MasuRii/wtr-lab-term-replacer-webpack#readme/raw/main/dist/wtr-lab-term-replacer-webpack.5.6.0.performance.user.js
+// @downloadURL https://github.com/MasuRii/wtr-lab-term-replacer-webpack#readme/raw/main/dist/wtr-lab-term-replacer-webpack.5.7.0.performance.user.js
 // @grant GM_setValue
 // @grant GM_getValue
 // @grant GM_listValues
@@ -17,5 +17,5 @@
 // @license MIT
 // @namespace https://github.com/MasuRii/wtr-lab-term-replacer-webpack
 // @run-at document-idle
-// @updateURL https://github.com/MasuRii/wtr-lab-term-replacer-webpack#readme/raw/main/dist/wtr-lab-term-replacer-webpack.5.6.0.performance.meta.js
+// @updateURL https://github.com/MasuRii/wtr-lab-term-replacer-webpack#readme/raw/main/dist/wtr-lab-term-replacer-webpack.5.7.0.performance.meta.js
 // ==/UserScript==
