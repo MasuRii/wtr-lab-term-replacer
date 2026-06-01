@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name WTR Lab Term Replacer
 // @description A modular, Webpack-powered TypeScript version of the WTR Lab Term Replacer userscript.
-// @version 5.7.0
+// @version 5.7.1
 // @author MasuRii
 // @homepage https://github.com/MasuRii/wtr-lab-term-replacer-webpack#readme
 // @supportURL https://github.com/MasuRii/wtr-lab-term-replacer-webpack/issues
@@ -246,9 +246,7 @@ function updateDupModeAfterChange() {
 /* harmony import */ var _state__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(654);
 /* harmony import */ var _utils__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(158);
 /* harmony import */ var _ui__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(141);
-/* harmony import */ var _config__WEBPACK_IMPORTED_MODULE_3__ = __webpack_require__(333);
 // Core replacement engine for WTR Lab Term Replacer
-
 
 
 
@@ -292,8 +290,7 @@ async function performReplacementsWithRetry(targetElement, maxRetries) {
                 // Re-acquire element reference for better stability
                 const chapterId = (0,_utils__WEBPACK_IMPORTED_MODULE_1__/* .getChapterIdFromUrl */ .Ug)(window.location.href);
                 if (chapterId) {
-                    const chapterSelector = `#${chapterId} ${_config__WEBPACK_IMPORTED_MODULE_3__/* .CHAPTER_BODY_SELECTOR */ .tA}`;
-                    targetElement = document.querySelector(chapterSelector);
+                    targetElement = (0,_utils__WEBPACK_IMPORTED_MODULE_1__/* .findChapterBodyById */ .b4)(chapterId) || (0,_utils__WEBPACK_IMPORTED_MODULE_1__/* .findChapterBodyForUrl */ .dF)(document);
                     if (!targetElement) {
                         (0,_utils__WEBPACK_IMPORTED_MODULE_1__/* .log */ .Rm)(_state__WEBPACK_IMPORTED_MODULE_0__/* .state */ .wk.globalSettings, `WTR Term Replacer: Unable to re-acquire target element for chapter ${chapterId}`);
                         throw new Error("Unable to re-acquire target element");
@@ -1187,6 +1184,36 @@ function getSuggestionPresenceLabels(suggestion) {
     }
     return labels;
 }
+function shouldShowSuggestionCount(suggestion) {
+    const sourceLabel = (suggestion.sourceLabel || "").toLowerCase();
+    return suggestion.count > 0 && /current|api|user|profile|preference/.test(sourceLabel);
+}
+function getSuggestionVisualMeta(suggestion) {
+    const sourceLabel = suggestion.sourceLabel || "WTR";
+    const normalizedSource = sourceLabel.toLowerCase();
+    if (shouldShowSuggestionCount(suggestion)) {
+        return { kind: "profile", icon: "profile", sourceLabel };
+    }
+    if (normalizedSource.includes("google")) {
+        return { kind: "google", icon: "g_translate", sourceLabel };
+    }
+    if (normalizedSource.includes("source")) {
+        return { kind: "source", icon: "text_fields", sourceLabel };
+    }
+    if (normalizedSource.includes("field")) {
+        return { kind: "field", icon: "edit", sourceLabel };
+    }
+    return { kind: "wtr", icon: "dictionary", sourceLabel };
+}
+function createSuggestionIcon(iconName) {
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("class", "icon inline-flex shrink-0 size-4");
+    svg.setAttribute("aria-hidden", "true");
+    const use = document.createElementNS("http://www.w3.org/2000/svg", "use");
+    use.setAttribute("href", `#${iconName}`);
+    svg.appendChild(use);
+    return svg;
+}
 function renderReplacementSuggestions(suggestions, message = "") {
     const container = document.getElementById("wtr-replacement-suggestions");
     if (!container) {
@@ -1209,20 +1236,27 @@ function renderReplacementSuggestions(suggestions, message = "") {
     buttonWrap.className = "wtr-replacement-suggestion-buttons";
     suggestions.forEach((suggestion) => {
         const presenceLabels = getSuggestionPresenceLabels(suggestion.replacement);
+        const visualMeta = getSuggestionVisualMeta(suggestion);
+        const displayCount = shouldShowSuggestionCount(suggestion) ? suggestion.count : 0;
+        const metaParts = [visualMeta.sourceLabel, displayCount > 0 ? String(displayCount) : "", ...presenceLabels].filter(Boolean);
         const button = document.createElement("button");
         button.type = "button";
-        button.className = `btn btn-secondary btn-sm wtr-replacement-suggestion-btn${presenceLabels.length ? " wtr-suggestion-existing" : ""}`;
+        button.className = `wtr-replacement-suggestion-btn wtr-suggestion-${visualMeta.kind}${presenceLabels.length ? " wtr-suggestion-existing" : ""}`;
         button.dataset.replacement = suggestion.replacement;
+        button.title = metaParts.join(" • ");
+        const iconSegment = document.createElement("span");
+        iconSegment.className = "wtr-suggestion-icon-segment";
+        iconSegment.appendChild(createSuggestionIcon(visualMeta.icon));
+        if (displayCount > 0) {
+            const countLabel = document.createElement("span");
+            countLabel.textContent = String(displayCount);
+            iconSegment.appendChild(countLabel);
+        }
+        button.appendChild(iconSegment);
         const replacementLabel = document.createElement("span");
+        replacementLabel.className = "wtr-suggestion-label";
         replacementLabel.textContent = suggestion.replacement;
         button.appendChild(replacementLabel);
-        const metaParts = [suggestion.sourceLabel, suggestion.count > 0 ? String(suggestion.count) : "", ...presenceLabels].filter(Boolean);
-        if (metaParts.length > 0) {
-            const sourceLabel = document.createElement("small");
-            sourceLabel.className = "wtr-replacement-suggestion-source";
-            sourceLabel.textContent = metaParts.join(" • ");
-            button.appendChild(sourceLabel);
-        }
         buttonWrap.appendChild(button);
     });
     container.appendChild(buttonWrap);
@@ -1398,7 +1432,7 @@ function mergeReplacementSuggestions(candidates, suggestions) {
     for (const candidate of candidates) {
         mergedSuggestions.push({
             replacement: candidate.term,
-            count: candidate.count || 0,
+            count: 0,
             sourceLabel: "Source",
             sourceRank: -10,
         });
@@ -1410,7 +1444,7 @@ function mergeReplacementSuggestions(candidates, suggestions) {
         candidateReplacements.forEach((replacement) => {
             mergedSuggestions.push({
                 replacement,
-                count: candidate.count || 0,
+                count: 0,
                 sourceLabel: "WTR",
                 sourceRank: 30,
             });
@@ -1488,6 +1522,9 @@ function clearDiscoveryFormState() {
     }
 }
 function handleReplacementSuggestionInput(event) {
+    if (event?.wtrSkipSuggestions) {
+        return;
+    }
     if (suppressNextReplacementSuggestionInput) {
         suppressNextReplacementSuggestionInput = false;
         return;
@@ -1663,10 +1700,63 @@ function getPopoverBadgeSuggestion(badge) {
     }
     return normalizeReplacementSuggestion(replacement, getPopoverBadgeCount(badge), "WTR", 50);
 }
-function getWtrPopoverContextFromElement(element) {
-    const sourceTerm = normalizePopoverText(element.querySelector(".text-underscore")?.textContent);
-    const popoverSuggestions = Array.from(element.querySelectorAll(".user-term .badge, .badge.bg-success, .badge.bg-primary"))
-        .map(getPopoverBadgeSuggestion)
+function getNewPopoverSuggestion(candidate) {
+    const spans = Array.from(candidate.querySelectorAll("span"));
+    const labelSpan = spans
+        .slice()
+        .reverse()
+        .find((span) => {
+        const text = normalizePopoverText(span.textContent);
+        return text && !/^\d+\+?$/.test(text) && text !== "From" && text !== "To";
+    });
+    const replacement = normalizePopoverText(labelSpan?.textContent || candidate.textContent);
+    if (!replacement || replacement === "From" || replacement === "To") {
+        return null;
+    }
+    const countText = spans.map((span) => normalizePopoverText(span.textContent)).find((text) => /^\d+\+?$/.test(text)) || "";
+    const count = countText ? Number.parseInt(countText, 10) || 0 : 0;
+    const iconHref = candidate.querySelector("use")?.getAttribute("href") || "";
+    const classSource = `${getElementClassText(candidate)} ${iconHref}`;
+    if (/g_translate|bg-google|google/i.test(classSource)) {
+        return normalizeReplacementSuggestion(replacement, count, "Google", 90);
+    }
+    if (/dictionary|profile|green|success/i.test(classSource)) {
+        return normalizeReplacementSuggestion(replacement, count, "WTR", 30);
+    }
+    return normalizeReplacementSuggestion(replacement, count, "WTR", 50);
+}
+function getNewWtrPopoverRoot(element) {
+    const candidate = element.matches('[data-slot="popover-content"], [role="dialog"]')
+        ? element
+        : element.querySelector('[data-slot="popover-content"], [role="dialog"]') ||
+            element.closest('[data-slot="popover-content"], [role="dialog"]');
+    if (!candidate) {
+        return null;
+    }
+    const text = normalizePopoverText(candidate.textContent);
+    const iconHrefs = Array.from(candidate.querySelectorAll("use")).map((use) => use.getAttribute("href") || use.getAttribute("xlink:href") || "");
+    const hasTermChoices = iconHrefs.some((href) => /#(?:dictionary|g_translate|profile)/.test(href));
+    return text.includes("From") && text.includes("To") && hasTermChoices ? candidate : null;
+}
+function getNewPopoverSuggestionElements(popoverRoot) {
+    const byIcon = Array.from(popoverRoot.querySelectorAll("use"))
+        .filter((use) => /#(?:dictionary|g_translate|profile)/.test(use.getAttribute("href") || use.getAttribute("xlink:href") || ""))
+        .map((use) => use.closest('div[class*="inline-flex"][class*="cursor-pointer"]'))
+        .filter((candidate) => Boolean(candidate));
+    const byClass = Array.from(popoverRoot.querySelectorAll('div.inline-flex.cursor-pointer, div[class*="cursor-pointer"][class*="rounded"][class*="text-xs"]'));
+    return [...byIcon, ...byClass].filter((candidate, index, list) => !candidate.closest(".wtr-replacer-popover-actions") &&
+        !candidate.closest("button") &&
+        list.indexOf(candidate) === index);
+}
+function getNewWtrPopoverContextFromElement(element) {
+    const popoverRoot = getNewWtrPopoverRoot(element);
+    if (!popoverRoot) {
+        return null;
+    }
+    const sourceTerm = normalizePopoverText(popoverRoot.querySelector(".text-muted-foreground")?.textContent);
+    const suggestionElements = getNewPopoverSuggestionElements(popoverRoot);
+    const popoverSuggestions = suggestionElements
+        .map(getNewPopoverSuggestion)
         .filter((suggestion) => Boolean(suggestion));
     const recentContext = state/* state */.wk.wtrPopoverTermContext || {};
     const recentSuggestions = Array.isArray(recentContext.suggestions) ? recentContext.suggestions : [];
@@ -1689,6 +1779,48 @@ function getWtrPopoverContextFromElement(element) {
         suggestions: resolvedSuggestions,
     };
 }
+function getWtrPopoverContextFromElement(element) {
+    const sourceTerm = normalizePopoverText(element.querySelector(".text-underscore")?.textContent);
+    const popoverSuggestions = Array.from(element.querySelectorAll(".user-term .badge, .badge.bg-success, .badge.bg-primary"))
+        .map(getPopoverBadgeSuggestion)
+        .filter((suggestion) => Boolean(suggestion));
+    if (!sourceTerm && popoverSuggestions.length === 0) {
+        return getNewWtrPopoverContextFromElement(element);
+    }
+    const recentContext = state/* state */.wk.wtrPopoverTermContext || {};
+    const recentSuggestions = Array.isArray(recentContext.suggestions) ? recentContext.suggestions : [];
+    const original = normalizePopoverText(recentContext.original) || popoverSuggestions[0]?.replacement || sourceTerm;
+    const resolvedSourceTerm = sourceTerm || normalizePopoverText(recentContext.sourceTerm);
+    const sourceSuggestion = normalizeReplacementSuggestion(resolvedSourceTerm, 0, "Source", -10);
+    const currentSuggestion = normalizeReplacementSuggestion(original, 0, "Current", 0);
+    const resolvedSuggestions = dedupeReplacementSuggestions([
+        ...(sourceSuggestion ? [sourceSuggestion] : []),
+        ...(currentSuggestion ? [currentSuggestion] : []),
+        ...popoverSuggestions,
+        ...recentSuggestions,
+    ]);
+    if (!original && !resolvedSourceTerm && resolvedSuggestions.length === 0) {
+        return null;
+    }
+    return {
+        original,
+        sourceTerm: resolvedSourceTerm,
+        suggestions: resolvedSuggestions,
+    };
+}
+function mergePopoverContexts(primary, secondary) {
+    if (!primary) {
+        return secondary;
+    }
+    if (!secondary) {
+        return primary;
+    }
+    return {
+        original: normalizePopoverText(primary.original) || normalizePopoverText(secondary.original),
+        sourceTerm: normalizePopoverText(primary.sourceTerm) || normalizePopoverText(secondary.sourceTerm),
+        suggestions: dedupeReplacementSuggestions([...(primary.suggestions || []), ...(secondary.suggestions || [])]),
+    };
+}
 function encodePopoverContext(context) {
     return JSON.stringify(context);
 }
@@ -1703,10 +1835,22 @@ function decodePopoverContext(value) {
         return null;
     }
 }
+function dispatchUiOnlyInput(element) {
+    if (!element) {
+        return;
+    }
+    const event = new Event("input", { bubbles: true });
+    event.wtrSkipSuggestions = true;
+    element.dispatchEvent(event);
+}
 function openWtrPopoverTermContext(context) {
     (0,ui/* showUIPanel */.E1)();
     suppressNextReplacementSuggestionInput = true;
     (0,ui/* showFormView */.BD)();
+    if (replacementSuggestionTimeout) {
+        clearTimeout(replacementSuggestionTimeout);
+        replacementSuggestionTimeout = null;
+    }
     const originalInput = document.getElementById("wtr-original");
     const replacementInput = document.getElementById("wtr-replacement");
     if (!originalInput || !replacementInput) {
@@ -1715,6 +1859,13 @@ function openWtrPopoverTermContext(context) {
     originalInput.value = context.original || context.suggestions[0]?.replacement || context.sourceTerm || "";
     originalInput.rows = Math.max(1, Math.ceil(originalInput.value.length / 40));
     replacementInput.value = "";
+    dispatchUiOnlyInput(originalInput);
+    dispatchUiOnlyInput(replacementInput);
+    if (replacementSuggestionTimeout) {
+        clearTimeout(replacementSuggestionTimeout);
+        replacementSuggestionTimeout = null;
+    }
+    suppressNextReplacementSuggestionInput = false;
     ensureDiscoveryState().replacementSuggestions = dedupeReplacementSuggestions(context.suggestions);
     renderReplacementSuggestions(ensureDiscoveryState().replacementSuggestions);
     activeSuggestionTarget = "replacement";
@@ -1761,6 +1912,140 @@ function enhanceWtrTermPopovers(root = document) {
         buttonGroup.appendChild(openButton);
         actionColumn.appendChild(buttonGroup);
     });
+    const newPopoverRoots = [
+        ...(root instanceof Element && getNewWtrPopoverRoot(root) ? [getNewWtrPopoverRoot(root)] : []),
+        ...Array.from(root.querySelectorAll('[data-slot="popover-content"], [role="dialog"]')).map(getNewWtrPopoverRoot),
+    ].filter((popoverRoot, index, list) => Boolean(popoverRoot) && list.indexOf(popoverRoot) === index);
+    newPopoverRoots.forEach((popoverRoot) => {
+        const context = getNewWtrPopoverContextFromElement(popoverRoot);
+        if (!context) {
+            return;
+        }
+        const existingButton = popoverRoot.querySelector(".wtr-replacer-popover-add-btn");
+        if (existingButton) {
+            const mergedContext = mergePopoverContexts(decodePopoverContext(existingButton.dataset.wtrContext), context);
+            if (mergedContext) {
+                existingButton.dataset.wtrContext = encodePopoverContext(mergedContext);
+            }
+            return;
+        }
+        const actionColumn = Array.from(popoverRoot.querySelectorAll("button")).find((button) => normalizePopoverText(button.textContent) === "Term")?.parentElement || popoverRoot.querySelector(".flex.flex-col.ms-2") || popoverRoot;
+        const sourceButton = Array.from(actionColumn.querySelectorAll("button")).find((button) => normalizePopoverText(button.textContent) === "Term");
+        const openButton = document.createElement("button");
+        openButton.type = "button";
+        const sourceClassName = sourceButton?.className?.replace(/\bmt-auto\b/g, "").replace(/\s+/g, " ").trim();
+        openButton.className = sourceClassName
+            ? `${sourceClassName} wtr-replacer-popover-add-btn`
+            : "btn btn-outline-primary btn-sm wtr-replacer-popover-add-btn";
+        openButton.style.marginTop = "0.25rem";
+        openButton.textContent = "+ Replacer";
+        openButton.dataset.wtrContext = encodePopoverContext(context);
+        if (actionColumn instanceof HTMLElement) {
+            actionColumn.style.gap = "0.25rem";
+        }
+        actionColumn.appendChild(openButton);
+    });
+}
+function getNormalizedTermValue(value) {
+    return normalizePopoverText(value).toLocaleLowerCase();
+}
+function getContextLookupValues(context) {
+    const values = new Map();
+    const addValue = (value) => {
+        const normalized = normalizePopoverText(value);
+        if (normalized) {
+            values.set(normalized.toLocaleLowerCase(), normalized);
+        }
+    };
+    addValue(context.original);
+    addValue(context.sourceTerm);
+    context.suggestions.forEach((suggestion) => addValue(suggestion.replacement));
+    return Array.from(values.values());
+}
+function termMatchesLookupValue(term, lookupValues) {
+    const normalizedLookupValues = lookupValues.map(getNormalizedTermValue).filter(Boolean);
+    const directValues = [term.original, term.replacement, ...Array.from(getExistingSuggestionTokens(term.original || ""))];
+    if (directValues.some((value) => normalizedLookupValues.includes(getNormalizedTermValue(value)))) {
+        return true;
+    }
+    if (term.isRegex && term.original) {
+        try {
+            const regex = new RegExp(term.original, term.caseSensitive ? "" : "i");
+            return lookupValues.some((value) => regex.test(value));
+        }
+        catch (_error) {
+            return false;
+        }
+    }
+    return false;
+}
+function findExistingTermsForContext(context) {
+    const lookupValues = getContextLookupValues(context);
+    if (lookupValues.length === 0) {
+        return [];
+    }
+    return state/* state */.wk.terms.filter((term) => termMatchesLookupValue(term, lookupValues));
+}
+function removeExistingTermModal() {
+    document.querySelector(".wtr-existing-term-modal")?.remove();
+}
+function showExistingTermModal(context, existingTerms) {
+    removeExistingTermModal();
+    (0,ui/* showUIPanel */.E1)();
+    const overlay = document.createElement("div");
+    overlay.className = "wtr-existing-term-modal";
+    const card = document.createElement("div");
+    card.className = "wtr-existing-term-card";
+    overlay.appendChild(card);
+    const header = document.createElement("div");
+    header.className = "wtr-existing-term-header";
+    header.textContent = "Existing Term Found";
+    card.appendChild(header);
+    const body = document.createElement("div");
+    body.className = "wtr-existing-term-body";
+    const message = document.createElement("p");
+    message.textContent = "This WTR term already appears in your Term Replacer storage. Open the saved term instead of creating a duplicate.";
+    body.appendChild(message);
+    const list = document.createElement("div");
+    list.className = "wtr-existing-term-list";
+    existingTerms.slice(0, 5).forEach((term) => {
+        const openButton = document.createElement("button");
+        openButton.type = "button";
+        openButton.className = "wtr-existing-term-open-btn";
+        openButton.textContent = `${term.original} → ${term.replacement}`;
+        openButton.addEventListener("click", () => {
+            removeExistingTermModal();
+            (0,ui/* showUIPanel */.E1)();
+            (0,ui/* showFormView */.BD)(term);
+        });
+        list.appendChild(openButton);
+    });
+    body.appendChild(list);
+    card.appendChild(body);
+    const actions = document.createElement("div");
+    actions.className = "wtr-existing-term-actions";
+    const closeButton = document.createElement("button");
+    closeButton.type = "button";
+    closeButton.className = "btn btn-secondary btn-sm";
+    closeButton.textContent = "Close";
+    closeButton.addEventListener("click", removeExistingTermModal);
+    const addAnywayButton = document.createElement("button");
+    addAnywayButton.type = "button";
+    addAnywayButton.className = "btn btn-primary btn-sm";
+    addAnywayButton.textContent = "Add Anyway";
+    addAnywayButton.addEventListener("click", () => {
+        removeExistingTermModal();
+        openWtrPopoverTermContext(context);
+    });
+    actions.appendChild(closeButton);
+    actions.appendChild(addAnywayButton);
+    card.appendChild(actions);
+    overlay.addEventListener("click", (modalEvent) => {
+        if (modalEvent.target === overlay) {
+            removeExistingTermModal();
+        }
+    });
+    document.body.appendChild(overlay);
 }
 function handleWtrPopoverAddTermClick(event) {
     const button = event.target?.closest?.(".wtr-replacer-popover-add-btn");
@@ -1769,8 +2054,15 @@ function handleWtrPopoverAddTermClick(event) {
     }
     event.preventDefault();
     event.stopPropagation();
-    const context = decodePopoverContext(button.dataset.wtrContext) || getWtrPopoverContextFromElement(button.closest(".popover-body") || button);
+    const popoverRoot = button.closest('[data-slot="popover-content"], [role="dialog"], .popover-body') || button.closest(".popover-body") || button;
+    const context = mergePopoverContexts(decodePopoverContext(button.dataset.wtrContext), getWtrPopoverContextFromElement(popoverRoot));
     if (!context) {
+        return;
+    }
+    button.dataset.wtrContext = encodePopoverContext(context);
+    const existingTerms = findExistingTermsForContext(context);
+    if (existingTerms.length > 0) {
+        showExistingTermModal(context, existingTerms);
         return;
     }
     openWtrPopoverTermContext(context);
@@ -1838,6 +2130,8 @@ async function handleSaveTerm() {
     // Clear form fields
     originalInput.value = "";
     replacementInput.value = "";
+    originalInput.dispatchEvent(new Event("input", { bubbles: true }));
+    replacementInput.dispatchEvent(new Event("input", { bubbles: true }));
     document.getElementById("wtr-term-id").value = "";
     document.getElementById("wtr-case-sensitive").checked = false;
     document.getElementById("wtr-is-regex").checked = false;
@@ -1910,15 +2204,31 @@ async function handleDeleteSelected() {
         (0,ui/* hideUILoader */.W4)();
     }
 }
+function getSelectionAnchorElement(selection) {
+    const anchorNode = selection?.anchorNode || null;
+    if (!anchorNode) {
+        return null;
+    }
+    return anchorNode.nodeType === Node.ELEMENT_NODE ? anchorNode : anchorNode.parentElement;
+}
 function handleTextSelection(e) {
     const CHAPTER_BODY_SELECTOR = ".chapter-body";
-    if (!e.target.closest(CHAPTER_BODY_SELECTOR)) {
+    const selection = window.getSelection();
+    const eventTarget = e.target instanceof Element ? e.target : null;
+    const anchorElement = getSelectionAnchorElement(selection);
+    const isChapterSelection = Boolean(eventTarget?.closest(CHAPTER_BODY_SELECTOR) || anchorElement?.closest(CHAPTER_BODY_SELECTOR));
+    const floatBtn = document.querySelector(".wtr-add-term-float-btn");
+    if (!floatBtn) {
         return;
     }
-    const selection = window.getSelection().toString().trim();
-    const floatBtn = document.querySelector(".wtr-add-term-float-btn");
-    if (selection && selection.length > 0 && selection.length < 100) {
-        floatBtn.style.display = "block";
+    if (!isChapterSelection) {
+        floatBtn.style.display = "none";
+        return;
+    }
+    const selectedText = selection?.toString().trim() || "";
+    if (selectedText && selectedText.length > 0 && selectedText.length < 100) {
+        (0,ui/* syncFloatingAddTermButtonPosition */.SJ)();
+        floatBtn.style.display = "flex";
     }
     else {
         floatBtn.style.display = "none";
@@ -1929,7 +2239,11 @@ function handleAddTermFromSelection() {
     if (selection) {
         (0,ui/* showUIPanel */.E1)();
         (0,ui/* showFormView */.BD)();
-        document.getElementById("wtr-original").value = selection;
+        const originalInput = document.getElementById("wtr-original");
+        if (originalInput) {
+            originalInput.value = selection;
+            originalInput.dispatchEvent(new Event("input", { bubbles: true }));
+        }
         document.getElementById("wtr-replacement").focus();
     }
     document.querySelector(".wtr-add-term-float-btn").style.display = "none";
@@ -1947,23 +2261,13 @@ function handleSearch(e) {
 async function handleDisableToggle(e) {
     state/* state */.wk.settings.isDisabled = e.target.checked;
     await (0,storage.saveSettings)(state/* state */.wk.settings);
-    const getChapterIdFromUrl = (url) => {
-        const match = url.match(/(chapter-\d+)/);
-        return match ? match[1] : null;
-    };
-    const CHAPTER_BODY_SELECTOR = ".chapter-body";
-    const chapterId = getChapterIdFromUrl(window.location.href);
-    if (!chapterId) {
-        return;
-    }
-    const chapterSelector = `#${chapterId} ${CHAPTER_BODY_SELECTOR}`;
-    const chapterBody = document.querySelector(chapterSelector);
+    const chapterBody = (0,utils/* findChapterBodyForUrl */.dF)(document);
     if (chapterBody) {
         if (state/* state */.wk.settings.isDisabled) {
-            (0,engine.revertAllReplacements)(chapterBody);
+            await (0,engine.revertAllReplacements)(chapterBody);
         }
         else {
-            (0,engine.performReplacements)(chapterBody);
+            await (0,engine.performReplacements)(chapterBody);
         }
     }
 }
@@ -2333,39 +2637,46 @@ async function addTermProgrammatically(original, replacement, isRegex = false) {
 /* harmony export */   processVisibleChapter: () => (/* binding */ processVisibleChapter)
 /* harmony export */ });
 /* unused harmony import specifier */ var state;
-/* unused harmony import specifier */ var getChapterIdFromUrl;
+/* unused harmony import specifier */ var CHAPTER_BODY_SELECTOR;
+/* unused harmony import specifier */ var findChapterContainerForUrl;
+/* unused harmony import specifier */ var findChapterBodyForUrl;
 /* unused harmony import specifier */ var log;
 /* harmony import */ var _state__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(654);
 /* harmony import */ var _engine__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(9);
 /* harmony import */ var _ui__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(141);
-/* harmony import */ var _utils__WEBPACK_IMPORTED_MODULE_3__ = __webpack_require__(158);
+/* harmony import */ var _config__WEBPACK_IMPORTED_MODULE_3__ = __webpack_require__(333);
+/* harmony import */ var _utils__WEBPACK_IMPORTED_MODULE_4__ = __webpack_require__(158);
 // MutationObserver and content handling for WTR Lab Term Replacer
 
 
 
 
+
 function waitForInitialContent() {
-    (0,_utils__WEBPACK_IMPORTED_MODULE_3__/* .log */ .Rm)(_state__WEBPACK_IMPORTED_MODULE_0__/* .state */ .wk.globalSettings, "WTR Term Replacer: Starting robust content detection for slow-loading websites...");
+    (0,_utils__WEBPACK_IMPORTED_MODULE_4__/* .log */ .Rm)(_state__WEBPACK_IMPORTED_MODULE_0__/* .state */ .wk.globalSettings, "WTR Term Replacer: Starting robust content detection for slow-loading websites...");
     // Set up mutation observer for dynamic content loading
-    (0,_utils__WEBPACK_IMPORTED_MODULE_3__/* .log */ .Rm)(_state__WEBPACK_IMPORTED_MODULE_0__/* .state */ .wk.globalSettings, "WTR Term Replacer: Setting up content change observer");
+    (0,_utils__WEBPACK_IMPORTED_MODULE_4__/* .log */ .Rm)(_state__WEBPACK_IMPORTED_MODULE_0__/* .state */ .wk.globalSettings, "WTR Term Replacer: Setting up content change observer");
     setupContentObserver();
     // Set up additional fallback mechanisms
-    (0,_utils__WEBPACK_IMPORTED_MODULE_3__/* .log */ .Rm)(_state__WEBPACK_IMPORTED_MODULE_0__/* .state */ .wk.globalSettings, "WTR Term Replacer: Setting up fallback detection mechanisms");
+    (0,_utils__WEBPACK_IMPORTED_MODULE_4__/* .log */ .Rm)(_state__WEBPACK_IMPORTED_MODULE_0__/* .state */ .wk.globalSettings, "WTR Term Replacer: Setting up fallback detection mechanisms");
     setupFallbackDetection();
 }
 function _detectContentWithMultipleStrategies() {
     const detectionStrategies = [
-        // Strategy 1: Standard chapter ID detection
+        // Strategy 1: Standard chapter ID/tracker detection
         () => {
-            const chapterId = getChapterIdFromUrl(window.location.href);
-            const contentContainer = chapterId ? document.querySelector(`#${chapterId}`) : null;
-            return contentContainer ? { container: contentContainer, strategy: "chapter-id" } : null;
+            const contentContainer = findChapterContainerForUrl(document);
+            return contentContainer ? { container: contentContainer, strategy: "chapter-container" } : null;
         },
         // Strategy 2: Look for chapter body directly
         () => {
-            const CHAPTER_BODY_SELECTOR = ".chapter-body";
-            const chapterBody = document.querySelector(CHAPTER_BODY_SELECTOR);
-            return chapterBody ? { container: chapterBody.closest('[id*="chapter"]'), strategy: "chapter-body" } : null;
+            const chapterBody = findChapterBodyForUrl(document);
+            return chapterBody
+                ? {
+                    container: chapterBody.closest(".chapter-container, .chapter-tracker, [id*=\"chapter\"]") || chapterBody,
+                    strategy: "chapter-body",
+                }
+                : null;
         },
         // Strategy 3: Look for any container with substantial content
         () => {
@@ -2451,8 +2762,8 @@ function isContentReadyForProcessing(container) {
     const hasSubstantialContent = container.textContent?.trim().length > 100;
     const hasNoActiveLoaders = !container.querySelector('.loading, .spinner, [style*="loading"], .skeleton');
     const isVisible = container.offsetWidth > 0 && container.offsetHeight > 0;
-    const CHAPTER_BODY_SELECTOR = ".chapter-body";
-    const hasChapterContent = container.querySelector(CHAPTER_BODY_SELECTOR) || container.querySelector("p, h1, h2, h3, h4, h5, h6");
+    const hasChapterContent = container.querySelector(`${CHAPTER_BODY_SELECTOR}, .wtr-line, [data-line]`) ||
+        container.querySelector("p, h1, h2, h3, h4, h5, h6");
     return hasSubstantialContent && hasNoActiveLoaders && isVisible && hasChapterContent;
 }
 function setupContentObserver() {
@@ -2475,27 +2786,30 @@ function setupContentObserver() {
                 // Check if substantial content was added
                 for (const node of mutation.addedNodes) {
                     if (node.nodeType === Node.ELEMENT_NODE) {
-                        const textContent = node.textContent?.trim() || "";
+                        const element = node;
+                        const textContent = element.textContent?.trim() || "";
+                        const className = typeof element.className === "string" ? element.className : element.getAttribute("class") || "";
                         // Detect multi-script data attributes being added
-                        if (node.hasAttribute?.("data-smart-quotes-processed")) {
+                        if (element.hasAttribute?.("data-smart-quotes-processed")) {
                             detectedScriptChanges.push("Smart Quotes");
                             shouldCheckForContent = true;
                         }
-                        if (node.hasAttribute?.("data-uncensor-processed")) {
+                        if (element.hasAttribute?.("data-uncensor-processed")) {
                             detectedScriptChanges.push("Uncensor");
                             shouldCheckForContent = true;
                         }
-                        if (node.hasAttribute?.("data-auto-scroll") || node.hasAttribute?.("data-reader-enhanced")) {
+                        if (element.hasAttribute?.("data-auto-scroll") || element.hasAttribute?.("data-reader-enhanced")) {
                             detectedScriptChanges.push("Reader Enhancer");
                             shouldCheckForContent = true;
                         }
-                        // More strict content validation to reduce false positives
+                        // More strict content validation to reduce false positives while supporting the new tracker DOM.
                         if (textContent.length > 100 &&
                             !textContent.includes("loading") &&
                             !textContent.includes("...") &&
-                            (node.id?.includes("chapter") ||
-                                node.className?.includes("chapter") ||
-                                node.querySelector(".chapter-body"))) {
+                            (element.id?.includes("chapter") ||
+                                className.includes("chapter") ||
+                                element.matches?.(`.chapter-tracker, .chapter-container, ${_config__WEBPACK_IMPORTED_MODULE_3__/* .CHAPTER_BODY_SELECTOR */ .tA}, .wtr-line, [data-line]`) ||
+                                element.querySelector(`${_config__WEBPACK_IMPORTED_MODULE_3__/* .CHAPTER_BODY_SELECTOR */ .tA}, .chapter-tracker, .chapter-container, .wtr-line, [data-line]`))) {
                             shouldCheckForContent = true;
                             break;
                         }
@@ -2508,12 +2822,12 @@ function setupContentObserver() {
             lastCheckTime = now;
             if (detectedScriptChanges.length > 0) {
                 potentialMultiScriptConflicts++;
-                (0,_utils__WEBPACK_IMPORTED_MODULE_3__/* .log */ .Rm)(`WTR Term Replacer: Multi-script activity detected from: ${detectedScriptChanges.join(", ")} (conflict ${potentialMultiScriptConflicts})`);
+                (0,_utils__WEBPACK_IMPORTED_MODULE_4__/* .log */ .Rm)(`WTR Term Replacer: Multi-script activity detected from: ${detectedScriptChanges.join(", ")} (conflict ${potentialMultiScriptConflicts})`);
                 // Update our detected scripts
                 detectedScriptChanges.forEach((script) => _state__WEBPACK_IMPORTED_MODULE_0__/* .state */ .wk.otherWTRScripts.add(script));
             }
             else {
-                (0,_utils__WEBPACK_IMPORTED_MODULE_3__/* .log */ .Rm)("WTR Term Replacer: Content changes detected, checking for chapter content...");
+                (0,_utils__WEBPACK_IMPORTED_MODULE_4__/* .log */ .Rm)("WTR Term Replacer: Content changes detected, checking for chapter content...");
             }
             // Debounced check to avoid excessive processing with enhanced delay for multi-script
             const baseDelay = 1500;
@@ -2522,11 +2836,11 @@ function setupContentObserver() {
             observerTimeout = setTimeout(() => {
                 const queuedForProcessing = document.querySelector("[data-wtr-processed]") || _state__WEBPACK_IMPORTED_MODULE_0__/* .state */ .wk.processingQueue.size > 0;
                 if (!queuedForProcessing) {
-                    (0,_utils__WEBPACK_IMPORTED_MODULE_3__/* .log */ .Rm)(`WTR Term Replacer: Initiating content processing (${_state__WEBPACK_IMPORTED_MODULE_0__/* .state */ .wk.otherWTRScripts.size} other scripts active, ${multiScriptDelay}ms coordination delay)`);
+                    (0,_utils__WEBPACK_IMPORTED_MODULE_4__/* .log */ .Rm)(`WTR Term Replacer: Initiating content processing (${_state__WEBPACK_IMPORTED_MODULE_0__/* .state */ .wk.otherWTRScripts.size} other scripts active, ${multiScriptDelay}ms coordination delay)`);
                     processVisibleChapter();
                 }
                 else {
-                    (0,_utils__WEBPACK_IMPORTED_MODULE_3__/* .log */ .Rm)(`WTR Term Replacer: Skipping content processing - already in progress or completed (queue: ${_state__WEBPACK_IMPORTED_MODULE_0__/* .state */ .wk.processingQueue.size})`);
+                    (0,_utils__WEBPACK_IMPORTED_MODULE_4__/* .log */ .Rm)(`WTR Term Replacer: Skipping content processing - already in progress or completed (queue: ${_state__WEBPACK_IMPORTED_MODULE_0__/* .state */ .wk.processingQueue.size})`);
                 }
                 isContentChangeInProgress = false;
             }, multiScriptDelay); // Increased delay to coordinate with other processes
@@ -2538,7 +2852,7 @@ function setupContentObserver() {
         attributes: true,
         attributeFilter: ["style", "class", "id"],
     });
-    (0,_utils__WEBPACK_IMPORTED_MODULE_3__/* .log */ .Rm)("WTR Term Replacer: Enhanced content observer activated with multi-script coordination");
+    (0,_utils__WEBPACK_IMPORTED_MODULE_4__/* .log */ .Rm)("WTR Term Replacer: Enhanced content observer activated with multi-script coordination");
 }
 function setupFallbackDetection() {
     // Periodic fallback check for stubborn slow-loading pages
@@ -2550,30 +2864,25 @@ function setupFallbackDetection() {
             return;
         }
         fallbackAttempts++;
-        (0,_utils__WEBPACK_IMPORTED_MODULE_3__/* .log */ .Rm)(`WTR Term Replacer: Fallback attempt ${fallbackAttempts}/${maxFallbackAttempts}`);
+        (0,_utils__WEBPACK_IMPORTED_MODULE_4__/* .log */ .Rm)(`WTR Term Replacer: Fallback attempt ${fallbackAttempts}/${maxFallbackAttempts}`);
         // Try processing if we have any chapter-like content
-        const chapterId = (0,_utils__WEBPACK_IMPORTED_MODULE_3__/* .getChapterIdFromUrl */ .Ug)(window.location.href);
-        if (chapterId) {
-            const CHAPTER_BODY_SELECTOR = ".chapter-body";
-            const chapterSelector = `#${chapterId} ${CHAPTER_BODY_SELECTOR}`;
-            const chapterBody = document.querySelector(chapterSelector);
-            if (chapterBody) {
-                (0,_utils__WEBPACK_IMPORTED_MODULE_3__/* .log */ .Rm)("WTR Term Replacer: Fallback processing successful");
-                processVisibleChapter();
-                clearInterval(fallbackInterval);
-                return;
-            }
+        const chapterBody = (0,_utils__WEBPACK_IMPORTED_MODULE_4__/* .findChapterBodyForUrl */ .dF)(document);
+        if (chapterBody) {
+            (0,_utils__WEBPACK_IMPORTED_MODULE_4__/* .log */ .Rm)("WTR Term Replacer: Fallback processing successful");
+            processVisibleChapter();
+            clearInterval(fallbackInterval);
+            return;
         }
         // Check for any substantial content that might be chapter content
         const potentialContent = document.querySelector("main, article, .content, .chapter");
         if (potentialContent && potentialContent.textContent?.trim().length > 200) {
-            (0,_utils__WEBPACK_IMPORTED_MODULE_3__/* .log */ .Rm)("WTR Term Replacer: Fallback processing with detected content");
+            (0,_utils__WEBPACK_IMPORTED_MODULE_4__/* .log */ .Rm)("WTR Term Replacer: Fallback processing with detected content");
             processVisibleChapter();
             clearInterval(fallbackInterval);
         }
         if (fallbackAttempts >= maxFallbackAttempts) {
             clearInterval(fallbackInterval);
-            (0,_utils__WEBPACK_IMPORTED_MODULE_3__/* .log */ .Rm)("WTR Term Replacer: Fallback detection exhausted");
+            (0,_utils__WEBPACK_IMPORTED_MODULE_4__/* .log */ .Rm)("WTR Term Replacer: Fallback detection exhausted");
         }
     }, 3000); // Check every 3 seconds
     // Clear fallback interval after 5 minutes to prevent infinite polling
@@ -2582,14 +2891,9 @@ function setupFallbackDetection() {
     }, 300000);
 }
 function processVisibleChapter() {
-    const chapterId = (0,_utils__WEBPACK_IMPORTED_MODULE_3__/* .getChapterIdFromUrl */ .Ug)(window.location.href);
-    if (!chapterId) {
-        return;
-    }
-    const CHAPTER_BODY_SELECTOR = ".chapter-body";
-    const chapterSelector = `#${chapterId} ${CHAPTER_BODY_SELECTOR}`;
-    const chapterBody = document.querySelector(chapterSelector);
-    if (!chapterBody) {
+    const chapterBody = (0,_utils__WEBPACK_IMPORTED_MODULE_4__/* .findChapterBodyForUrl */ .dF)(document);
+    const chapterId = (0,_utils__WEBPACK_IMPORTED_MODULE_4__/* .getChapterProcessingId */ .aV)(window.location.href, chapterBody);
+    if (!chapterId || !chapterBody) {
         return;
     }
     if (chapterBody.dataset.wtrProcessed === "true") {
@@ -2601,8 +2905,9 @@ function processVisibleChapter() {
 function scheduleChapterProcessing(chapterId, _chapterBody) {
     const processingKey = `${chapterId}_${Date.now()}`;
     // Enhanced queue management with proper synchronization
-    if (_state__WEBPACK_IMPORTED_MODULE_0__/* .state */ .wk.processingQueue.has(chapterId)) {
-        (0,_utils__WEBPACK_IMPORTED_MODULE_3__/* .log */ .Rm)(`WTR Term Replacer: Chapter ${chapterId} already queued for processing ${_state__WEBPACK_IMPORTED_MODULE_0__/* .state */ .wk.processingQueue.size} queued`);
+    const alreadyQueued = Array.from(_state__WEBPACK_IMPORTED_MODULE_0__/* .state */ .wk.processingQueue).some((key) => key === chapterId || key.startsWith(`${chapterId}_`));
+    if (alreadyQueued) {
+        (0,_utils__WEBPACK_IMPORTED_MODULE_4__/* .log */ .Rm)(`WTR Term Replacer: Chapter ${chapterId} already queued for processing ${_state__WEBPACK_IMPORTED_MODULE_0__/* .state */ .wk.processingQueue.size} queued`);
         return;
     }
     // Add with unique identifier to prevent race conditions
@@ -2624,13 +2929,11 @@ async function executeProcessingWithRetry(chapterId, retryAttempts, attemptIndex
         await new Promise((resolve) => setTimeout(resolve, attempt.delay));
         // Verify queue entry still exists (prevent race conditions)
         if (!_state__WEBPACK_IMPORTED_MODULE_0__/* .state */ .wk.processingQueue.has(processingKey)) {
-            (0,_utils__WEBPACK_IMPORTED_MODULE_3__/* .log */ .Rm)(`WTR Term Replacer: Chapter ${chapterId} processing cancelled (no longer in queue)`);
+            (0,_utils__WEBPACK_IMPORTED_MODULE_4__/* .log */ .Rm)(`WTR Term Replacer: Chapter ${chapterId} processing cancelled (no longer in queue)`);
             return;
         }
-        // Re-acquire chapter body element dynamically to avoid stale references
-        const CHAPTER_BODY_SELECTOR = ".chapter-body";
-        const chapterSelector = `#${chapterId} ${CHAPTER_BODY_SELECTOR}`;
-        const chapterBody = document.querySelector(chapterSelector);
+        // Re-acquire chapter body element dynamically to avoid stale references.
+        const chapterBody = (0,_utils__WEBPACK_IMPORTED_MODULE_4__/* .findChapterBodyById */ .b4)(chapterId) || (0,_utils__WEBPACK_IMPORTED_MODULE_4__/* .findChapterBodyForUrl */ .dF)(document);
         if (!chapterBody) {
             throw new Error("Chapter body element not found");
         }
@@ -2644,22 +2947,22 @@ async function executeProcessingWithRetry(chapterId, retryAttempts, attemptIndex
             // Proceed with processing
             await performRobustReplacements(chapterBody, chapterId);
             _state__WEBPACK_IMPORTED_MODULE_0__/* .state */ .wk.processingQueue.delete(processingKey);
-            (0,_utils__WEBPACK_IMPORTED_MODULE_3__/* .log */ .Rm)(`WTR Term Replacer: Successfully processed chapter ${chapterId} on attempt ${attemptIndex + 1}`);
+            (0,_utils__WEBPACK_IMPORTED_MODULE_4__/* .log */ .Rm)(`WTR Term Replacer: Successfully processed chapter ${chapterId} on attempt ${attemptIndex + 1}`);
         }
         else if (attemptIndex < retryAttempts.length - 1) {
             // Retry with next attempt
-            (0,_utils__WEBPACK_IMPORTED_MODULE_3__/* .log */ .Rm)(`WTR Term Replacer: Chapter ${chapterId} content not ready (load level: ${contentLoadLevel.toFixed(2)}), retrying...`);
+            (0,_utils__WEBPACK_IMPORTED_MODULE_4__/* .log */ .Rm)(`WTR Term Replacer: Chapter ${chapterId} content not ready (load level: ${contentLoadLevel.toFixed(2)}), retrying...`);
             executeProcessingWithRetry(chapterId, retryAttempts, attemptIndex + 1, processingKey);
         }
         else {
             // Final attempt with any available content
-            (0,_utils__WEBPACK_IMPORTED_MODULE_3__/* .log */ .Rm)(`WTR Term Replacer: Final attempt for chapter ${chapterId} with available content`);
+            (0,_utils__WEBPACK_IMPORTED_MODULE_4__/* .log */ .Rm)(`WTR Term Replacer: Final attempt for chapter ${chapterId} with available content`);
             await performRobustReplacements(chapterBody, chapterId, true); // force processing
             _state__WEBPACK_IMPORTED_MODULE_0__/* .state */ .wk.processingQueue.delete(processingKey);
         }
     }
     catch (error) {
-        (0,_utils__WEBPACK_IMPORTED_MODULE_3__/* .log */ .Rm)(`WTR Term Replacer: Error processing chapter ${chapterId} on attempt ${attemptIndex + 1}:`, error);
+        (0,_utils__WEBPACK_IMPORTED_MODULE_4__/* .log */ .Rm)(`WTR Term Replacer: Error processing chapter ${chapterId} on attempt ${attemptIndex + 1}:`, error);
         if (attemptIndex < retryAttempts.length - 1) {
             executeProcessingWithRetry(chapterId, retryAttempts, attemptIndex + 1, processingKey);
         }
@@ -2687,33 +2990,33 @@ function estimateContentLoadLevel(chapterBody) {
     return Math.max(loadLevel, totalTextLength > 100 ? 0.5 : 0.1);
 }
 function detectOtherWTRScripts() {
-    (0,_utils__WEBPACK_IMPORTED_MODULE_3__/* .log */ .Rm)(_state__WEBPACK_IMPORTED_MODULE_0__/* .state */ .wk.globalSettings, "WTR Term Replacer: Scanning for other WTR Lab scripts...");
+    (0,_utils__WEBPACK_IMPORTED_MODULE_4__/* .log */ .Rm)(_state__WEBPACK_IMPORTED_MODULE_0__/* .state */ .wk.globalSettings, "WTR Term Replacer: Scanning for other WTR Lab scripts...");
     // Detect other WTR Lab scripts by their data attributes or specific patterns
     const scripts = document.querySelectorAll("[data-smart-quotes-processed], [data-uncensor-processed], [data-auto-scroll], [data-reader-enhanced]");
-    (0,_utils__WEBPACK_IMPORTED_MODULE_3__/* .log */ .Rm)(_state__WEBPACK_IMPORTED_MODULE_0__/* .state */ .wk.globalSettings, `WTR Term Replacer: Found ${scripts.length} elements with WTR script attributes`);
+    (0,_utils__WEBPACK_IMPORTED_MODULE_4__/* .log */ .Rm)(_state__WEBPACK_IMPORTED_MODULE_0__/* .state */ .wk.globalSettings, `WTR Term Replacer: Found ${scripts.length} elements with WTR script attributes`);
     scripts.forEach((el) => {
         if (el.hasAttribute("data-smart-quotes-processed")) {
             _state__WEBPACK_IMPORTED_MODULE_0__/* .state */ .wk.otherWTRScripts.add("Smart Quotes");
-            (0,_utils__WEBPACK_IMPORTED_MODULE_3__/* .log */ .Rm)(_state__WEBPACK_IMPORTED_MODULE_0__/* .state */ .wk.globalSettings, "WTR Term Replacer: Detected Smart Quotes script");
+            (0,_utils__WEBPACK_IMPORTED_MODULE_4__/* .log */ .Rm)(_state__WEBPACK_IMPORTED_MODULE_0__/* .state */ .wk.globalSettings, "WTR Term Replacer: Detected Smart Quotes script");
         }
         if (el.hasAttribute("data-uncensor-processed")) {
             _state__WEBPACK_IMPORTED_MODULE_0__/* .state */ .wk.otherWTRScripts.add("Uncensor");
-            (0,_utils__WEBPACK_IMPORTED_MODULE_3__/* .log */ .Rm)(_state__WEBPACK_IMPORTED_MODULE_0__/* .state */ .wk.globalSettings, "WTR Term Replacer: Detected Uncensor script");
+            (0,_utils__WEBPACK_IMPORTED_MODULE_4__/* .log */ .Rm)(_state__WEBPACK_IMPORTED_MODULE_0__/* .state */ .wk.globalSettings, "WTR Term Replacer: Detected Uncensor script");
         }
         if (el.hasAttribute("data-auto-scroll") || el.hasAttribute("data-reader-enhanced")) {
             _state__WEBPACK_IMPORTED_MODULE_0__/* .state */ .wk.otherWTRScripts.add("Reader Enhancer");
-            (0,_utils__WEBPACK_IMPORTED_MODULE_3__/* .log */ .Rm)(_state__WEBPACK_IMPORTED_MODULE_0__/* .state */ .wk.globalSettings, "WTR Term Replacer: Detected Reader Enhancer script");
+            (0,_utils__WEBPACK_IMPORTED_MODULE_4__/* .log */ .Rm)(_state__WEBPACK_IMPORTED_MODULE_0__/* .state */ .wk.globalSettings, "WTR Term Replacer: Detected Reader Enhancer script");
         }
     });
     if (_state__WEBPACK_IMPORTED_MODULE_0__/* .state */ .wk.otherWTRScripts.size > 0) {
-        (0,_utils__WEBPACK_IMPORTED_MODULE_3__/* .log */ .Rm)(_state__WEBPACK_IMPORTED_MODULE_0__/* .state */ .wk.globalSettings, `WTR Term Replacer: Multi-script environment detected - Active scripts: ${Array.from(_state__WEBPACK_IMPORTED_MODULE_0__/* .state */ .wk.otherWTRScripts).join(", ")}`);
+        (0,_utils__WEBPACK_IMPORTED_MODULE_4__/* .log */ .Rm)(_state__WEBPACK_IMPORTED_MODULE_0__/* .state */ .wk.globalSettings, `WTR Term Replacer: Multi-script environment detected - Active scripts: ${Array.from(_state__WEBPACK_IMPORTED_MODULE_0__/* .state */ .wk.otherWTRScripts).join(", ")}`);
     }
     else {
-        (0,_utils__WEBPACK_IMPORTED_MODULE_3__/* .log */ .Rm)(_state__WEBPACK_IMPORTED_MODULE_0__/* .state */ .wk.globalSettings, "WTR Term Replacer: No other WTR scripts detected, running in single-script mode");
+        (0,_utils__WEBPACK_IMPORTED_MODULE_4__/* .log */ .Rm)(_state__WEBPACK_IMPORTED_MODULE_0__/* .state */ .wk.globalSettings, "WTR Term Replacer: No other WTR scripts detected, running in single-script mode");
     }
 }
 function startProcessingTimer(operation) {
-    (0,_utils__WEBPACK_IMPORTED_MODULE_3__/* .log */ .Rm)(_state__WEBPACK_IMPORTED_MODULE_0__/* .state */ .wk.globalSettings, `WTR Term Replacer: Starting processing timer for ${operation}`);
+    (0,_utils__WEBPACK_IMPORTED_MODULE_4__/* .log */ .Rm)(_state__WEBPACK_IMPORTED_MODULE_0__/* .state */ .wk.globalSettings, `WTR Term Replacer: Starting processing timer for ${operation}`);
     _state__WEBPACK_IMPORTED_MODULE_0__/* .state */ .wk.processingStartTime.set(operation, Date.now());
 }
 function endProcessingTimer(operation, chapterId) {
@@ -2721,12 +3024,12 @@ function endProcessingTimer(operation, chapterId) {
     if (startTime) {
         const processingTime = Date.now() - startTime;
         const isMultiScript = _state__WEBPACK_IMPORTED_MODULE_0__/* .state */ .wk.otherWTRScripts.size > 0;
-        (0,_utils__WEBPACK_IMPORTED_MODULE_3__/* .log */ .Rm)(_state__WEBPACK_IMPORTED_MODULE_0__/* .state */ .wk.globalSettings, `WTR Term Replacer: Processing timer ended for ${operation}, took ${processingTime}ms`);
+        (0,_utils__WEBPACK_IMPORTED_MODULE_4__/* .log */ .Rm)(_state__WEBPACK_IMPORTED_MODULE_0__/* .state */ .wk.globalSettings, `WTR Term Replacer: Processing timer ended for ${operation}, took ${processingTime}ms`);
         logProcessingWithMultiScriptContext(chapterId, processingTime, isMultiScript);
         _state__WEBPACK_IMPORTED_MODULE_0__/* .state */ .wk.processingStartTime.delete(operation);
         return processingTime;
     }
-    (0,_utils__WEBPACK_IMPORTED_MODULE_3__/* .log */ .Rm)(_state__WEBPACK_IMPORTED_MODULE_0__/* .state */ .wk.globalSettings, `WTR Term Replacer: Warning - processing timer for ${operation} not found`);
+    (0,_utils__WEBPACK_IMPORTED_MODULE_4__/* .log */ .Rm)(_state__WEBPACK_IMPORTED_MODULE_0__/* .state */ .wk.globalSettings, `WTR Term Replacer: Warning - processing timer for ${operation} not found`);
     return 0;
 }
 function logProcessingWithMultiScriptContext(chapterId, processingTime, isMultiScript = false) {
@@ -2740,10 +3043,10 @@ function logProcessingWithMultiScriptContext(chapterId, processingTime, isMultiS
     };
     if (isMultiScript && _state__WEBPACK_IMPORTED_MODULE_0__/* .state */ .wk.otherWTRScripts.size > 0) {
         context.activeScripts = Array.from(_state__WEBPACK_IMPORTED_MODULE_0__/* .state */ .wk.otherWTRScripts);
-        (0,_utils__WEBPACK_IMPORTED_MODULE_3__/* .log */ .Rm)(_state__WEBPACK_IMPORTED_MODULE_0__/* .state */ .wk.globalSettings, `WTR Term Replacer: Multi-script enhanced processing completed`, context);
+        (0,_utils__WEBPACK_IMPORTED_MODULE_4__/* .log */ .Rm)(_state__WEBPACK_IMPORTED_MODULE_0__/* .state */ .wk.globalSettings, `WTR Term Replacer: Multi-script enhanced processing completed`, context);
     }
     else {
-        (0,_utils__WEBPACK_IMPORTED_MODULE_3__/* .log */ .Rm)(_state__WEBPACK_IMPORTED_MODULE_0__/* .state */ .wk.globalSettings, `WTR Term Replacer: Standard processing completed`, context);
+        (0,_utils__WEBPACK_IMPORTED_MODULE_4__/* .log */ .Rm)(_state__WEBPACK_IMPORTED_MODULE_0__/* .state */ .wk.globalSettings, `WTR Term Replacer: Standard processing completed`, context);
     }
 }
 async function performRobustReplacements(chapterBody, chapterId, forceProcess = false) {
@@ -2759,22 +3062,22 @@ async function performRobustReplacements(chapterBody, chapterId, forceProcess = 
         }
         const isMultiScript = _state__WEBPACK_IMPORTED_MODULE_0__/* .state */ .wk.otherWTRScripts.size > 0;
         if (isMultiScript) {
-            (0,_utils__WEBPACK_IMPORTED_MODULE_3__/* .log */ .Rm)(`WTR Term Replacer: Multi-script processing starting for chapter ${chapterId} with active scripts: ${Array.from(_state__WEBPACK_IMPORTED_MODULE_0__/* .state */ .wk.otherWTRScripts).join(", ")}`);
+            (0,_utils__WEBPACK_IMPORTED_MODULE_4__/* .log */ .Rm)(`WTR Term Replacer: Multi-script processing starting for chapter ${chapterId} with active scripts: ${Array.from(_state__WEBPACK_IMPORTED_MODULE_0__/* .state */ .wk.otherWTRScripts).join(", ")}`);
         }
         else {
-            (0,_utils__WEBPACK_IMPORTED_MODULE_3__/* .log */ .Rm)(`WTR Term Replacer: Processing chapter ${chapterId} with robust method`);
+            (0,_utils__WEBPACK_IMPORTED_MODULE_4__/* .log */ .Rm)(`WTR Term Replacer: Processing chapter ${chapterId} with robust method`);
         }
-        (0,_engine__WEBPACK_IMPORTED_MODULE_1__.performReplacements)(chapterBody);
+        await (0,_engine__WEBPACK_IMPORTED_MODULE_1__.performReplacements)(chapterBody);
         chapterBody.dataset.wtrProcessed = "true";
         (0,_ui__WEBPACK_IMPORTED_MODULE_2__/* .addMenuButton */ .L_)();
         const processingTime = endProcessingTimer(`chapter_${chapterId}`, chapterId);
         if (isMultiScript) {
-            (0,_utils__WEBPACK_IMPORTED_MODULE_3__/* .log */ .Rm)(`WTR Term Replacer: Successfully completed multi-script processing for chapter ${chapterId} in ${processingTime}ms`);
+            (0,_utils__WEBPACK_IMPORTED_MODULE_4__/* .log */ .Rm)(`WTR Term Replacer: Successfully completed multi-script processing for chapter ${chapterId} in ${processingTime}ms`);
         }
     }
     catch (error) {
         const processingTime = endProcessingTimer(`chapter_${chapterId}`, chapterId) || 0;
-        (0,_utils__WEBPACK_IMPORTED_MODULE_3__/* .log */ .Rm)(`WTR Term Replacer: Robust processing failed for chapter ${chapterId} after ${processingTime}ms:`, error);
+        (0,_utils__WEBPACK_IMPORTED_MODULE_4__/* .log */ .Rm)(`WTR Term Replacer: Robust processing failed for chapter ${chapterId} after ${processingTime}ms:`, error);
         throw error;
     }
 }
@@ -2787,22 +3090,18 @@ function isElementReadyForProcessing(element) {
     return isVisible && hasSubstantialContent && hasNoLoadingStates;
 }
 function reprocessCurrentChapter() {
-    const chapterId = (0,_utils__WEBPACK_IMPORTED_MODULE_3__/* .getChapterIdFromUrl */ .Ug)(window.location.href);
-    if (!chapterId) {
+    const chapterBody = (0,_utils__WEBPACK_IMPORTED_MODULE_4__/* .findChapterBodyForUrl */ .dF)(document);
+    const chapterId = (0,_utils__WEBPACK_IMPORTED_MODULE_4__/* .getChapterProcessingId */ .aV)(window.location.href, chapterBody);
+    if (!chapterId || !chapterBody) {
         return;
     }
-    const CHAPTER_BODY_SELECTOR = ".chapter-body";
-    const chapterSelector = `#${chapterId} ${CHAPTER_BODY_SELECTOR}`;
-    const chapterBody = document.querySelector(chapterSelector);
-    if (chapterBody) {
-        // Reset processing state to allow reprocessing
-        chapterBody.dataset.wtrProcessed = "false";
-        // Clear any existing processing entries for this chapter
-        const existingKeys = Array.from(_state__WEBPACK_IMPORTED_MODULE_0__/* .state */ .wk.processingQueue).filter((key) => key.startsWith(chapterId));
-        existingKeys.forEach((key) => _state__WEBPACK_IMPORTED_MODULE_0__/* .state */ .wk.processingQueue.delete(key));
-        // Use robust reprocessing with retry mechanism
-        scheduleChapterProcessing(chapterId, chapterBody);
-    }
+    // Reset processing state to allow reprocessing
+    chapterBody.dataset.wtrProcessed = "false";
+    // Clear any existing processing entries for this chapter
+    const existingKeys = Array.from(_state__WEBPACK_IMPORTED_MODULE_0__/* .state */ .wk.processingQueue).filter((key) => key.startsWith(chapterId));
+    existingKeys.forEach((key) => _state__WEBPACK_IMPORTED_MODULE_0__/* .state */ .wk.processingQueue.delete(key));
+    // Use robust reprocessing with retry mechanism
+    scheduleChapterProcessing(chapterId, chapterBody);
 }
 function monitorURLChanges() {
     setInterval(() => {
@@ -3094,12 +3393,14 @@ async function processAndSaveSettings(importedSettings) {
 /* harmony export */   L_: () => (/* binding */ addMenuButton),
 /* harmony export */   OG: () => (/* binding */ switchTab),
 /* harmony export */   RD: () => (/* binding */ createUI),
+/* harmony export */   SJ: () => (/* binding */ syncFloatingAddTermButtonPosition),
 /* harmony export */   W4: () => (/* binding */ hideUILoader),
 /* harmony export */   X: () => (/* binding */ hideUIPanel),
 /* harmony export */   Xt: () => (/* binding */ showUILoader),
 /* harmony export */   gn: () => (/* binding */ showProcessingIndicator),
 /* harmony export */   kH: () => (/* binding */ clearTermList)
 /* harmony export */ });
+/* unused harmony export syncUITheme */
 /* harmony import */ var _state__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(654);
 /* harmony import */ var _handlers__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(359);
 /* harmony import */ var _duplicates__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(201);
@@ -3118,7 +3419,7 @@ const UI_HTML = `
         <h2>Term Replacer ${(0,_config_versions__WEBPACK_IMPORTED_MODULE_5__.getDisplayVersion)()}</h2>
         <div class="wtr-replacer-header-controls">
             <div class="wtr-replacer-disable-toggle">
-                <label><input type="checkbox" id="wtr-disable-all"> Disable All</label>
+                <label class="wtr-switch-label wtr-switch-compact"><input type="checkbox" id="wtr-disable-all"><span class="wtr-switch-track"><span></span></span><span>Disable All</span></label>
             </div>
             <button class="wtr-replacer-close-btn">&times;</button>
         </div>
@@ -3156,21 +3457,33 @@ const UI_HTML = `
         <div id="wtr-tab-add" class="wtr-replacer-tab-content">
             <input type="hidden" id="wtr-term-id">
             <div class="wtr-replacer-form-group">
-                <label for="wtr-original">Original Text</label>
-                <textarea id="wtr-original" rows="1"></textarea>
+                <div class="wtr-field-label-row">
+                    <label for="wtr-original">Original Text <span id="wtr-original-counter" class="wtr-character-counter">0/512</span></label>
+                    <div class="wtr-field-helper-actions">
+                        <button type="button" id="wtr-variation-btn" class="wtr-inline-helper-btn" title="Turn separated text into regex variations"><svg class="icon inline-flex shrink-0 size-4"><use href="#add"></use></svg><span>Variation</span></button>
+                        <button type="button" id="wtr-wildchar-btn" class="wtr-inline-helper-btn" title="Insert a regex wildcard or make selected spaces flexible"><svg class="icon inline-flex shrink-0 size-4"><use href="#add"></use></svg><span>Wild Char</span></button>
+                    </div>
+                </div>
+                <textarea id="wtr-original" rows="1" data-soft-max="512"></textarea>
                 <small id="wtr-regex-disabled-warning" class="wtr-regex-disabled-warning" style="display:none;">This looks like regex syntax, but Use Regex is off. It will be saved as plain text unless you enable Use Regex.</small>
-                <button type="button" id="wtr-refresh-suggestions-btn" class="btn btn-secondary btn-sm wtr-refresh-suggestions-btn">Refresh Suggestions</button>
+                <div class="wtr-original-helper-row">
+                    <small class="wtr-field-hint">Example: from_1|from_2|from_3...</small>
+                    <button type="button" id="wtr-refresh-suggestions-btn" class="wtr-inline-helper-btn">Refresh Suggestions</button>
+                </div>
             </div>
             <div class="wtr-replacer-form-group">
-                <label for="wtr-replacement">Replacement Text</label>
-                <input type="text" id="wtr-replacement">
+                <div class="wtr-field-label-row">
+                    <label for="wtr-replacement">Replacement Text <span id="wtr-replacement-counter" class="wtr-character-counter">0/512</span></label>
+                </div>
+                <input type="text" id="wtr-replacement" data-soft-max="512">
                 <div id="wtr-replacement-suggestions" class="wtr-replacement-suggestions" aria-live="polite"></div>
             </div>
-            <div class="wtr-replacer-form-group">
-                <label><input type="checkbox" id="wtr-case-sensitive"> Case Sensitive</label>
-                <label><input type="checkbox" id="wtr-is-regex"> Use Regex</label>
-                <label><input type="checkbox" id="wtr-whole-word" disabled> Whole Word Only</label>
+            <div class="wtr-replacer-form-group wtr-switch-group">
+                <label class="wtr-switch-label"><input type="checkbox" id="wtr-case-sensitive"><span class="wtr-switch-track"><span></span></span><span>Case Sensitive</span></label>
+                <label class="wtr-switch-label"><input type="checkbox" id="wtr-is-regex"><span class="wtr-switch-track"><span></span></span><span>Use Regex</span></label>
+                <label class="wtr-switch-label"><input type="checkbox" id="wtr-whole-word" disabled><span class="wtr-switch-track"><span></span></span><span>Whole Word Only</span></label>
             </div>
+            <small class="wtr-novel-only-note">This term applies to this novel only.</small>
             <button id="wtr-save-btn" class="btn btn-primary">Save Term</button>
         </div>
         <div id="wtr-tab-io" class="wtr-replacer-tab-content">
@@ -3207,19 +3520,54 @@ const UI_CSS = `
     .wtr-replacer-ui {
         position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
         width: 90%; max-width: 650px; max-height: 80vh;
-        background-color: var(--bs-body-bg); color: var(--bs-body-color);
-        border: 1px solid var(--bs-border-color); border-radius: var(--bs-border-radius-lg);
-        box-shadow: var(--bs-box-shadow-lg); z-index: 99999;
-        display: none; flex-direction: column; font-family: var(--bs-body-font-family);
+        background-color: var(--bs-body-bg, #ffffff); color: var(--bs-body-color, #111827);
+        border: 1px solid var(--bs-border-color, rgba(17, 24, 39, 0.15)); border-radius: var(--bs-border-radius-lg, 0.75rem);
+        box-shadow: var(--bs-box-shadow-lg, 0 24px 70px rgba(15, 23, 42, 0.24)); z-index: 99999;
+        display: none; flex-direction: column; font-family: var(--bs-body-font-family, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
     }
     .wtr-replacer-ui * { box-sizing: border-box; }
+    .wtr-replacer-ui[data-theme="dark"] {
+        background-color: var(--bs-body-bg, #1f2129);
+        color: var(--bs-body-color, #f8fafc);
+        border-color: var(--bs-border-color, rgba(248, 250, 252, 0.16));
+        box-shadow: var(--bs-box-shadow-lg, 0 24px 70px rgba(0, 0, 0, 0.55));
+    }
+    .wtr-replacer-ui[data-theme="dark"] .wtr-replacer-header,
+    .wtr-replacer-ui[data-theme="dark"] .wtr-replacer-tabs,
+    .wtr-replacer-ui[data-theme="dark"] .wtr-replacer-list-controls {
+        background-color: var(--bs-tertiary-bg, #181a22);
+        border-color: var(--bs-border-color, rgba(248, 250, 252, 0.14));
+    }
+    .wtr-replacer-ui[data-theme="dark"] .wtr-replacer-form-group input[type="text"],
+    .wtr-replacer-ui[data-theme="dark"] .wtr-replacer-form-group textarea,
+    .wtr-replacer-ui[data-theme="dark"] .wtr-replacer-search-bar {
+        background-color: var(--bs-body-bg, #111827);
+        color: var(--bs-body-color, #f8fafc);
+        border-color: var(--bs-border-color, rgba(248, 250, 252, 0.18));
+    }
+    .wtr-replacer-ui[data-theme="dark"] .wtr-replacer-term-item,
+    .wtr-replacer-ui[data-theme="dark"] #wtr-page-indicator {
+        background-color: var(--bs-secondary-bg-subtle, #171923);
+        border-color: var(--bs-border-color, rgba(248, 250, 252, 0.14));
+    }
+    .wtr-replacer-ui[data-theme="dark"] .wtr-inline-helper-btn {
+        background-color: var(--bs-body-bg, #111827);
+        color: var(--bs-body-color, #f8fafc);
+        border-color: var(--bs-border-color, rgba(248, 250, 252, 0.18));
+    }
+    .wtr-replacer-ui[data-theme="dark"] .wtr-inline-helper-btn:hover { background-color: var(--bs-secondary-bg-subtle, #1f2937); }
+    .wtr-replacer-ui[data-theme="dark"] .wtr-switch-track { background: var(--bs-secondary-bg-subtle, #374151); }
+    .wtr-replacer-ui[data-theme="dark"] .wtr-switch-track > span { background: var(--bs-body-bg, #f8fafc); }
+    .wtr-replacer-ui[data-theme="dark"] .wtr-replacer-tab-btn { color: var(--bs-secondary-color, #a7b0c0); }
+    .wtr-replacer-ui[data-theme="dark"] .wtr-replacer-tab-btn.active { color: var(--bs-primary, #8ab4ff); border-bottom-color: var(--bs-primary, #8ab4ff); }
+    .wtr-replacer-ui[data-theme="dark"] .btn { color: var(--bs-body-color, #f8fafc); }
 
     /* --- Header --- */
     .wtr-replacer-header {
-        padding: 0.75rem 1rem; background-color: var(--bs-tertiary-bg);
-        border-bottom: 1px solid var(--bs-border-color);
+        padding: 0.75rem 1rem; background-color: var(--bs-tertiary-bg, #f3f4f6);
+        border-bottom: 1px solid var(--bs-border-color, rgba(17, 24, 39, 0.15));
         display: flex; justify-content: space-between; align-items: center;
-        border-radius: var(--bs-border-radius-lg) var(--bs-border-radius-lg) 0 0;
+        border-radius: var(--bs-border-radius-lg, 0.75rem) var(--bs-border-radius-lg, 0.75rem) 0 0;
     }
     .wtr-replacer-header h2 { margin: 0; font-size: 1.25rem; }
     .wtr-replacer-header-controls { display: flex; align-items: center; gap: 1rem; }
@@ -3228,121 +3576,206 @@ const UI_CSS = `
     .wtr-replacer-close-btn { background: none; border: none; font-size: 1.5rem; cursor: pointer; line-height: 1; color: inherit; padding: 0; }
 
     /* --- Tabs --- */
-    .wtr-replacer-tabs { display: flex; padding: 0 0.5rem; border-bottom: 1px solid var(--bs-border-color); background-color: var(--bs-tertiary-bg); }
+    .wtr-replacer-tabs { display: flex; padding: 0 0.5rem; border-bottom: 1px solid var(--bs-border-color, rgba(17, 24, 39, 0.15)); background-color: var(--bs-tertiary-bg, #f3f4f6); }
     .wtr-replacer-tab-btn {
         background: none; border: none; padding: 0.75rem 1rem; cursor: pointer;
-        font-size: 0.9rem; color: var(--bs-secondary-color);
+        font-size: 0.9rem; color: var(--bs-secondary-color, #6b7280);
         border-bottom: 3px solid transparent; margin-bottom: -1px;
     }
-    .wtr-replacer-tab-btn.active { color: var(--bs-primary); border-bottom-color: var(--bs-primary); font-weight: bold; }
+    .wtr-replacer-tab-btn.active { color: var(--bs-primary, #2563eb); border-bottom-color: var(--bs-primary, #2563eb); font-weight: bold; }
 
     /* --- Content & Forms --- */
-    .wtr-replacer-content { padding: 1rem; overflow-y: auto; flex-grow: 1; position: relative; }
+    .wtr-replacer-content { padding: 0.75rem; overflow-y: auto; flex-grow: 1; position: relative; }
     .wtr-replacer-tab-content { display: none; }
     .wtr-replacer-tab-content.active { display: block; }
-    .wtr-replacer-form-group { margin-bottom: 1rem; }
-    .wtr-replacer-form-group label { display: block; margin-bottom: 0.5rem; font-weight: bold; font-size: 0.9rem; }
+    .wtr-replacer-form-group { margin-bottom: 0.875rem; }
+    .wtr-replacer-form-group label { display: block; margin-bottom: 0; font-weight: 700; font-size: 0.78rem; }
+    .wtr-field-label-row { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; margin-bottom: 0.45rem; }
+    .wtr-field-label-row label { display: inline-flex; align-items: center; gap: 0.35rem; }
+    .wtr-character-counter { color: var(--bs-secondary-color, #6b7280); font-weight: 600; }
+    .wtr-character-counter.wtr-counter-warning { color: var(--bs-warning, #b45309); }
+    .wtr-character-counter.wtr-counter-danger { color: var(--bs-danger, #dc3545); }
+    .wtr-field-helper-actions, .wtr-original-helper-row { display: flex; align-items: center; gap: 0.375rem; flex-wrap: wrap; }
+    .wtr-original-helper-row { justify-content: space-between; margin-top: 0.35rem; }
+    .wtr-field-hint { color: var(--bs-secondary-color, #6b7280); font-size: 0.72rem; }
+    .wtr-inline-helper-btn {
+        display: inline-flex; align-items: center; justify-content: center; gap: 0.25rem;
+        min-height: 1.5rem; padding: 0 0.5rem; border: 1px solid var(--bs-border-color, rgba(17,24,39,0.15));
+        border-radius: 0.5rem; background: var(--bs-body-bg, #fff); color: var(--bs-body-color, #111827);
+        cursor: pointer; font-size: 0.75rem; font-weight: 700; line-height: 1; transition: background-color .15s ease, color .15s ease, border-color .15s ease;
+    }
+    .wtr-inline-helper-btn:hover { background: var(--bs-secondary-bg-subtle, #f3f4f6); color: var(--bs-body-color, #111827); }
+    .wtr-inline-helper-btn svg { width: 1rem; height: 1rem; }
     .wtr-replacer-form-group input[type="text"], .wtr-replacer-search-bar {
-        width: 100%; padding: 0.5rem 0.75rem;
-        background-color: var(--bs-body-bg); color: var(--bs-body-color);
-        border: 1px solid var(--bs-border-color); border-radius: var(--bs-border-radius);
+        width: 100%; height: 2rem; padding: 0.25rem 0.625rem;
+        background-color: var(--bs-body-bg, #ffffff); color: var(--bs-body-color, #111827);
+        border: 1px solid var(--bs-border-color, rgba(17, 24, 39, 0.15)); border-radius: var(--bs-border-radius, 0.5rem);
     }
     .wtr-replacer-form-group textarea {
-        width: 100%; padding: 0.5rem 0.75rem;
-        background-color: var(--bs-body-bg); color: var(--bs-body-color);
-        border: 1px solid var(--bs-border-color); border-radius: var(--bs-border-radius);
+        width: 100%; padding: 0.375rem 0.625rem;
+        background-color: var(--bs-body-bg, #ffffff); color: var(--bs-body-color, #111827);
+        border: 1px solid var(--bs-border-color, rgba(17, 24, 39, 0.15)); border-radius: var(--bs-border-radius, 0.5rem);
         resize: none;
-        min-height: 2.5rem; max-height: 10rem;
-        line-height: 1.5; font-family: inherit;
+        min-height: 2rem; max-height: 10rem;
+        line-height: 1.4; font-family: inherit;
         word-wrap: break-word; white-space: pre-wrap;
     }
     .wtr-replacer-form-group input[type="checkbox"] { margin-right: 0.5rem; }
+    .wtr-switch-group { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 0.5rem; }
+    .wtr-switch-label { display: inline-flex !important; align-items: center; gap: 0.5rem; width: fit-content; cursor: pointer; font-size: 0.82rem !important; font-weight: 650 !important; }
+    .wtr-switch-label input { position: absolute; opacity: 0; pointer-events: none; }
+    .wtr-switch-track { position: relative; display: inline-flex; align-items: center; width: 2rem; height: 1.15rem; border-radius: 999px; background: var(--bs-secondary-bg-subtle, #d1d5db); transition: background-color .16s ease, opacity .16s ease; }
+    .wtr-switch-track > span { width: 0.95rem; height: 0.95rem; margin-left: 0.1rem; border-radius: 999px; background: var(--bs-body-bg, #fff); box-shadow: 0 1px 3px rgba(15,23,42,0.3); transition: transform .16s ease; }
+    .wtr-switch-label input:checked + .wtr-switch-track { background: var(--bs-primary, #2563eb); }
+    .wtr-switch-label input:checked + .wtr-switch-track > span { transform: translateX(0.84rem); }
+    .wtr-switch-label input:disabled + .wtr-switch-track { opacity: 0.45; }
+    .wtr-switch-compact { margin: 0; }
+    .wtr-novel-only-note { display: block; margin: -0.15rem 0 0.7rem; color: var(--bs-secondary-color, #6b7280); font-size: 0.76rem; }
 
     /* --- Visual Validation States --- */
     .wtr-replacer-form-group .wtr-field-invalid {
-        border-color: var(--bs-danger) !important;
-        background-color: rgba(var(--bs-danger-rgb), 0.1) !important;
-        box-shadow: 0 0 0 0.2rem rgba(var(--bs-danger-rgb), 0.25);
+        border-color: var(--bs-danger, #dc3545) !important;
+        background-color: rgba(var(--bs-danger-rgb, 220, 53, 69), 0.1) !important;
+        box-shadow: 0 0 0 0.2rem rgba(var(--bs-danger-rgb, 220, 53, 69), 0.25);
     }
     
     .wtr-replacer-form-group .wtr-field-valid {
-        border-color: var(--bs-success) !important;
-        background-color: rgba(var(--bs-success-rgb), 0.1) !important;
+        border-color: var(--bs-success, #198754) !important;
+        background-color: rgba(var(--bs-success-rgb, 25, 135, 84), 0.1) !important;
     }
 
     .wtr-replacer-form-group .wtr-field-warning {
-        border-color: var(--bs-warning) !important;
-        background-color: rgba(var(--bs-warning-rgb), 0.12) !important;
-        box-shadow: 0 0 0 0.2rem rgba(var(--bs-warning-rgb), 0.2);
+        border-color: var(--bs-warning, #ffc107) !important;
+        background-color: rgba(var(--bs-warning-rgb, 255, 193, 7), 0.12) !important;
+        box-shadow: 0 0 0 0.2rem rgba(var(--bs-warning-rgb, 255, 193, 7), 0.2);
     }
 
     .wtr-regex-disabled-warning {
         display: block;
         margin-top: 0.35rem;
-        color: var(--bs-warning-text-emphasis, var(--bs-warning));
+        color: var(--bs-warning-text-emphasis, var(--bs-warning, #b45309));
     }
     
     .wtr-save-btn:disabled {
         opacity: 0.6;
         cursor: not-allowed;
-        background-color: var(--bs-secondary);
-        border-color: var(--bs-secondary);
+        background-color: var(--bs-secondary, #6c757d);
+        border-color: var(--bs-secondary, #6c757d);
     }
 
     /* --- Buttons (Scoped to UI) --- */
     .wtr-replacer-ui .btn {
-        display: inline-block; font-weight: 400; line-height: 1.5; color: var(--bs-body-color);
+        display: inline-block; font-weight: 400; line-height: 1.5; color: var(--bs-body-color, #111827);
         text-align: center; vertical-align: middle; cursor: pointer; user-select: none;
         background-color: transparent; border: 1px solid transparent;
-        padding: 0.375rem 0.75rem; font-size: 1rem; border-radius: var(--bs-border-radius);
+        padding: 0.375rem 0.75rem; font-size: 1rem; border-radius: var(--bs-border-radius, 0.5rem);
         transition: color .15s ease-in-out,background-color .15s ease-in-out,border-color .15s ease-in-out,box-shadow .15s ease-in-out;
     }
     .wtr-replacer-ui .btn:disabled { opacity: 0.65; cursor: not-allowed; }
-    .wtr-replacer-ui .btn-primary { color: #fff; background-color: var(--bs-primary); border-color: var(--bs-primary); }
-    .wtr-replacer-ui .btn-secondary { color: #fff; background-color: var(--bs-secondary); border-color: var(--bs-secondary); }
-    .wtr-replacer-ui .btn-success { color: #fff; background-color: var(--bs-success); border-color: var(--bs-success); }
-    .wtr-replacer-ui .btn-warning { color: #000; background-color: var(--bs-warning); border-color: var(--bs-warning); }
-    .wtr-replacer-ui .btn-info { color: #fff; background-color: var(--bs-info); border-color: var(--bs-info); }
+    .wtr-replacer-ui .btn-primary { color: #fff; background-color: var(--bs-primary, #2563eb); border-color: var(--bs-primary, #2563eb); }
+    .wtr-replacer-ui .btn-secondary { color: #fff; background-color: var(--bs-secondary, #6c757d); border-color: var(--bs-secondary, #6c757d); }
+    .wtr-replacer-ui .btn-success { color: #fff; background-color: var(--bs-success, #198754); border-color: var(--bs-success, #198754); }
+    .wtr-replacer-ui .btn-warning { color: #000; background-color: var(--bs-warning, #ffc107); border-color: var(--bs-warning, #ffc107); }
+    .wtr-replacer-ui .btn-info { color: #fff; background-color: var(--bs-info, #0dcaf0); border-color: var(--bs-info, #0dcaf0); }
     .wtr-replacer-ui .btn-sm { padding: 0.25rem 0.5rem; font-size: 0.875rem; }
 
     .wtr-refresh-suggestions-btn { margin-top: 0.35rem; }
     .wtr-replacement-suggestions { margin-top: 0.35rem; }
-    .wtr-replacement-suggestion-buttons { display: flex; gap: 0.35rem; flex-wrap: wrap; margin-top: 0.35rem; }
-    .wtr-replacement-suggestion-btn { display: inline-flex !important; align-items: center; gap: 0.35rem; }
-    .wtr-replacement-suggestion-btn.wtr-suggestion-existing {
-        background-color: var(--bs-success) !important;
-        border-color: var(--bs-success) !important;
-        color: #fff !important;
+    .wtr-replacement-suggestion-buttons { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.35rem; }
+    .wtr-replacement-suggestion-btn {
+        display: inline-flex !important; align-items: center; min-height: 1.25rem;
+        padding: 0; border-radius: 0.25rem; border: 1px solid rgba(21, 128, 61, 0.5);
+        overflow: hidden; cursor: pointer; font-size: 0.75rem; font-weight: 600; line-height: 1;
+        background-color: #16a34a; color: #fff; transition: background-color .15s ease, border-color .15s ease, transform .15s ease;
     }
-    .wtr-replacement-suggestion-source { opacity: 0.85; font-size: 0.72rem; }
+    .wtr-replacement-suggestion-btn:hover { background-color: #22c55e; transform: translateY(-1px); }
+    .wtr-suggestion-icon-segment {
+        display: inline-flex; align-items: center; align-self: stretch; gap: 0.125rem;
+        padding: 0 0.25rem; border-right: 1px solid rgba(255,255,255,0.25);
+        background-color: #111827; color: #fff;
+    }
+    .wtr-suggestion-icon-segment svg { width: 1rem; height: 1rem; }
+    .wtr-suggestion-label { padding: 0 0.375rem; }
+    .wtr-suggestion-google { background-color: #4285f4; border-color: transparent; }
+    .wtr-suggestion-google:hover { background-color: #5b9bff; }
+    .wtr-suggestion-source { background-color: #374151; border-color: rgba(0,0,0,0.25); }
+    .wtr-suggestion-source:hover { background-color: #4b5563; }
+    .wtr-suggestion-field { background-color: #4f46e5; border-color: rgba(79,70,229,0.65); }
+    .wtr-suggestion-field:hover { background-color: #6366f1; }
+    .wtr-replacement-suggestion-btn.wtr-suggestion-existing { box-shadow: inset 0 0 0 1px rgba(255,255,255,0.38); }
     .wtr-replacer-popover-actions { display: flex; flex-direction: column; gap: 0.25rem; }
-    .wtr-replacer-popover-add-btn { white-space: nowrap; }
+    .wtr-replacer-popover-add-btn { white-space: nowrap; margin-top: 0.25rem !important; }
+
+    /* --- Existing Term Modal --- */
+    .wtr-existing-term-modal {
+        position: fixed; inset: 0; z-index: 100002; display: flex; align-items: center; justify-content: center;
+        background: rgba(15, 23, 42, 0.45); padding: 1rem;
+    }
+    .wtr-existing-term-card {
+        width: min(92vw, 460px); background: var(--bs-body-bg, #fff); color: var(--bs-body-color, #111827);
+        border: 1px solid var(--bs-border-color, rgba(17,24,39,0.16)); border-radius: 0.75rem;
+        box-shadow: 0 24px 70px rgba(0,0,0,0.32); overflow: hidden;
+    }
+    .wtr-existing-term-header { padding: 0.8rem 1rem; border-bottom: 1px solid var(--bs-border-color, rgba(17,24,39,0.12)); font-weight: 800; }
+    .wtr-existing-term-body { padding: 1rem; display: flex; flex-direction: column; gap: 0.75rem; }
+    .wtr-existing-term-body p { margin: 0; font-size: 0.9rem; }
+    .wtr-existing-term-list { display: flex; flex-direction: column; gap: 0.45rem; }
+    .wtr-existing-term-open-btn {
+        width: 100%; text-align: left; padding: 0.6rem 0.7rem; border: 1px solid var(--bs-border-color, rgba(17,24,39,0.14));
+        border-radius: 0.5rem; background: var(--bs-secondary-bg-subtle, #f3f4f6); color: inherit; cursor: pointer;
+    }
+    .wtr-existing-term-open-btn:hover { background: var(--bs-tertiary-bg, #e5e7eb); }
+    .wtr-existing-term-actions { display: flex; justify-content: flex-end; gap: 0.5rem; padding: 0.75rem 1rem; border-top: 1px solid var(--bs-border-color, rgba(17,24,39,0.12)); }
+    .wtr-existing-term-actions button {
+        display: inline-flex; align-items: center; justify-content: center; min-height: 1.75rem; padding: 0 0.65rem;
+        border-radius: 0.5rem; border: 1px solid transparent; cursor: pointer; font-size: 0.8rem; font-weight: 700;
+    }
+    .wtr-existing-term-actions .btn-secondary { background: var(--bs-secondary, #6b7280); color: #fff; }
+    .wtr-existing-term-actions .btn-primary { background: var(--bs-primary, #2563eb); color: #fff; }
+    .wtr-replacer-ui[data-theme="dark"] ~ .wtr-existing-term-modal .wtr-existing-term-card,
+    html.dark .wtr-existing-term-card,
+    body.dark .wtr-existing-term-card { background: #1f2129; color: #f8fafc; border-color: rgba(248,250,252,0.16); }
+    .wtr-replacer-ui[data-theme="dark"] ~ .wtr-existing-term-modal .wtr-existing-term-open-btn,
+    html.dark .wtr-existing-term-open-btn,
+    body.dark .wtr-existing-term-open-btn { background: #111827; border-color: rgba(248,250,252,0.16); }
 
     /* --- Term List --- */
     .wtr-replacer-list-controls {
         display: flex; justify-content: space-between; align-items: center;
         gap: 0.75rem; position: sticky; top: -1rem;
-        background-color: var(--bs-body-bg); padding: 0.75rem 0; z-index: 10;
+        background-color: var(--bs-body-bg, #ffffff); padding: 0.75rem 0; z-index: 10;
         flex-wrap: wrap;
     }
     .wtr-replacer-term-list { list-style: none; padding: 0; margin: 0; }
     .wtr-replacer-term-item {
-        padding: 0.75rem; border: 1px solid var(--bs-border-color);
-        border-radius: var(--bs-border-radius); margin-bottom: 0.5rem;
+        padding: 0.75rem; border: 1px solid var(--bs-border-color, rgba(17, 24, 39, 0.15));
+        border-radius: var(--bs-border-radius, 0.5rem); margin-bottom: 0.5rem;
         display: flex; align-items: center; gap: 0.75rem;
-        background-color: var(--bs-secondary-bg-subtle);
+        background-color: var(--bs-secondary-bg-subtle, #f3f4f6);
     }
     .wtr-replacer-term-details { flex-grow: 1; overflow: hidden; }
-    .wtr-replacer-term-text { font-family: var(--bs-font-monospace); font-size: 0.9rem; word-wrap: break-word; }
-    .wtr-term-original { color: var(--bs-danger) !important; font-weight: bold; }
-    .wtr-term-replacement { color: var(--bs-success) !important; font-weight: bold; }
+    .wtr-replacer-term-text { font-family: var(--bs-font-monospace, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace); font-size: 0.9rem; word-wrap: break-word; }
+    .wtr-term-original { color: var(--bs-danger, #dc3545) !important; font-weight: bold; }
+    .wtr-term-replacement { color: var(--bs-success, #198754) !important; font-weight: bold; }
 
     /* --- Floating Button --- */
     .wtr-add-term-float-btn {
-        position: fixed; bottom: 20px; right: 20px;
-        background-color: var(--bs-primary); color: white;
-        padding: 0.75rem 1.25rem; border-radius: 50rem; border: none;
-        box-shadow: var(--bs-box-shadow); cursor: pointer; font-size: 1rem; z-index: 99998; display: none;
+        position: fixed; bottom: 7.25rem; right: 1rem;
+        display: none; align-items: center; justify-content: center; gap: 0.5rem;
+        min-height: 2rem; padding: 0.625rem 1.25rem;
+        background-color: var(--bs-body-bg, #ffffff); color: #d97706;
+        border: 1px solid #d97706; border-radius: 0.375rem;
+        box-shadow: var(--bs-box-shadow, 0 10px 25px rgba(15, 23, 42, 0.18));
+        cursor: pointer; font-size: 0.875rem; font-weight: 600; line-height: 1;
+        z-index: 99998; transition: box-shadow .2s ease, transform .2s ease, background-color .2s ease;
+    }
+    .wtr-add-term-float-btn:hover { background-color: rgba(217, 119, 6, 0.1); box-shadow: 0 12px 30px rgba(15, 23, 42, 0.24); }
+    .wtr-add-term-float-btn svg { width: 1rem; height: 1rem; flex-shrink: 0; }
+    .wtr-replacer-ui[data-theme="dark"] ~ .wtr-add-term-float-btn,
+    html.dark .wtr-add-term-float-btn,
+    body.dark .wtr-add-term-float-btn {
+        background-color: #1f2129; color: #f59e0b; border-color: #f59e0b;
+        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4);
     }
 
     /* --- Overlays & Loaders --- */
@@ -3354,7 +3787,7 @@ const UI_CSS = `
     }
     .wtr-ui-loader {
         display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-        background: rgba(var(--bs-body-bg-rgb), 0.7); color: var(--bs-body-color);
+        background: rgba(var(--bs-body-bg-rgb, 255, 255, 255), 0.7); color: var(--bs-body-color, #111827);
         justify-content: center; align-items: center; z-index: 20;
     }
 
@@ -3370,13 +3803,13 @@ const UI_CSS = `
     }
     #wtr-page-indicator {
         white-space: nowrap; margin: 0 0.5rem; font-size: 0.875rem;
-        padding: 0.25rem 0.5rem; background-color: var(--bs-secondary-bg-subtle);
-        border-radius: var(--bs-border-radius);
+        padding: 0.25rem 0.5rem; background-color: var(--bs-secondary-bg-subtle, #f3f4f6);
+        border-radius: var(--bs-border-radius, 0.5rem);
     }
 
     /* --- Enhanced Export Button Styling --- */
     .wtr-export-combined {
-        background: linear-gradient(45deg, var(--bs-success), #28a745);
+        background: linear-gradient(45deg, var(--bs-success, #198754), #28a745);
         border: none;
         color: white;
         font-weight: bold;
@@ -3385,7 +3818,7 @@ const UI_CSS = `
     }
 
     .wtr-export-combined:hover {
-        background: linear-gradient(45deg, #28a745, var(--bs-success));
+        background: linear-gradient(45deg, #28a745, var(--bs-success, #198754));
         transform: translateY(-1px);
         box-shadow: 0 4px 8px rgba(0,0,0,0.2);
     }
@@ -3471,6 +3904,169 @@ const UI_CSS = `
         .wtr-pagination-controls { order: 3; margin-top: 1rem; margin-bottom: 0; }
     }
 `;
+function parseRgbColor(value) {
+    const match = value?.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/i);
+    return match ? [Number(match[1]), Number(match[2]), Number(match[3])] : null;
+}
+function isDarkRgb(value) {
+    const rgb = parseRgbColor(value);
+    if (!rgb) {
+        return false;
+    }
+    const [r, g, b] = rgb;
+    return (0.2126 * r + 0.7152 * g + 0.0722 * b) < 128;
+}
+function hasPressedDarkThemeControl() {
+    const pressedControls = Array.from(document.querySelectorAll('[aria-pressed="true"], [data-pressed]'));
+    const hasDarkPressed = pressedControls.some((control) => normalizeMenuText(control) === "Dark");
+    const hasLightPressed = pressedControls.some((control) => normalizeMenuText(control) === "Light");
+    if (hasDarkPressed) {
+        return true;
+    }
+    if (hasLightPressed) {
+        return false;
+    }
+    return false;
+}
+function hasDarkReaderThemeSample() {
+    const selectedSamples = Array.from(document.querySelectorAll('button[style*="background-color"]')).filter((button) => {
+        const text = normalizeMenuText(button);
+        const className = typeof button.className === "string" ? button.className : button.getAttribute("class") || "";
+        return text.includes('"Aa"') && /ring-primary|data-\[state=on\]|aria-pressed/.test(className);
+    });
+    return selectedSamples.some((button) => isDarkRgb(button.style.backgroundColor || getComputedStyle(button).backgroundColor));
+}
+function isWtrDarkModeActive() {
+    if (document.documentElement.classList.contains("dark") || document.body.classList.contains("dark")) {
+        return true;
+    }
+    if (hasPressedDarkThemeControl() || hasDarkReaderThemeSample()) {
+        return true;
+    }
+    const pageBg = getComputedStyle(document.body).backgroundColor || getComputedStyle(document.documentElement).backgroundColor;
+    return isDarkRgb(pageBg) || window.matchMedia?.("(prefers-color-scheme: dark)")?.matches === true;
+}
+function syncUITheme() {
+    const uiContainer = document.querySelector(".wtr-replacer-ui");
+    if (!uiContainer) {
+        return;
+    }
+    uiContainer.dataset.theme = isWtrDarkModeActive() ? "dark" : "light";
+}
+function findNativeFloatingAddTermButton() {
+    return (Array.from(document.querySelectorAll("button")).find((button) => normalizeMenuText(button) === "Add Term" && !button.classList.contains("wtr-add-term-float-btn")) || null);
+}
+function syncFloatingAddTermButtonPosition() {
+    const floatBtn = document.querySelector(".wtr-add-term-float-btn");
+    if (!floatBtn) {
+        return;
+    }
+    const nativeButton = findNativeFloatingAddTermButton();
+    const nativeContainer = nativeButton?.closest(".fixed");
+    const anchor = nativeContainer || nativeButton;
+    const rect = anchor?.getBoundingClientRect();
+    if (rect && rect.width > 0 && rect.height > 0) {
+        const gap = 8;
+        floatBtn.style.right = `${Math.max(12, Math.round(window.innerWidth - rect.right))}px`;
+        floatBtn.style.bottom = `${Math.max(20, Math.round(window.innerHeight - rect.top + gap))}px`;
+        return;
+    }
+    floatBtn.style.right = "1rem";
+    floatBtn.style.bottom = window.innerWidth <= 640 ? "11rem" : "7.25rem";
+}
+function getTextInputSoftMax(input) {
+    return Number(input?.dataset?.softMax) || 512;
+}
+function updateCharacterCounter(input, counter) {
+    if (!input || !counter) {
+        return;
+    }
+    const max = getTextInputSoftMax(input);
+    const length = input.value.length;
+    counter.textContent = `${length}/${max}`;
+    counter.classList.toggle("wtr-counter-warning", length > max * 0.8 && length <= max);
+    counter.classList.toggle("wtr-counter-danger", length > max);
+}
+function splitVariationParts(value) {
+    const parts = value
+        .split(/\s*(?:\||\/|,|;|\n)\s*/)
+        .map((part) => part.trim())
+        .filter(Boolean);
+    const deduped = new Map();
+    parts.forEach((part) => deduped.set(part.toLocaleLowerCase(), part));
+    return Array.from(deduped.values()).sort((a, b) => b.length - a.length || a.localeCompare(b));
+}
+function replaceInputRange(input, replacement) {
+    const start = input.selectionStart ?? input.value.length;
+    const end = input.selectionEnd ?? start;
+    input.value = `${input.value.slice(0, start)}${replacement}${input.value.slice(end)}`;
+    const cursor = start + replacement.length;
+    input.setSelectionRange(cursor, cursor);
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    input.focus();
+}
+function normalizeOriginalAsVariations(originalInput, regexCheckbox) {
+    const selectedText = originalInput.selectionStart !== null && originalInput.selectionEnd !== null && originalInput.selectionEnd > originalInput.selectionStart
+        ? originalInput.value.slice(originalInput.selectionStart, originalInput.selectionEnd)
+        : "";
+    const sourceText = selectedText || originalInput.value;
+    const parts = splitVariationParts(sourceText);
+    if (parts.length === 0) {
+        return;
+    }
+    const normalized = parts.map((part) => (0,_utils__WEBPACK_IMPORTED_MODULE_3__/* .escapeRegExp */ .Nt)(part)).join("|");
+    regexCheckbox.checked = true;
+    if (selectedText) {
+        replaceInputRange(originalInput, normalized);
+    }
+    else {
+        originalInput.value = normalized;
+        originalInput.dispatchEvent(new Event("input", { bubbles: true }));
+        originalInput.focus();
+    }
+    disableWholeWordForRegex();
+}
+function insertWildChar(originalInput, regexCheckbox) {
+    const start = originalInput.selectionStart ?? originalInput.value.length;
+    const end = originalInput.selectionEnd ?? start;
+    const selectedText = end > start ? originalInput.value.slice(start, end) : "";
+    const wildcard = selectedText
+        ? (0,_utils__WEBPACK_IMPORTED_MODULE_3__/* .escapeRegExp */ .Nt)(selectedText.trim()).replace(/\\\s\+/g, "\\s+").replace(/\s+/g, "\\s+")
+        : ".*?";
+    regexCheckbox.checked = true;
+    replaceInputRange(originalInput, wildcard);
+    disableWholeWordForRegex();
+}
+function disableWholeWordForRegex() {
+    const wholeWordCheckbox = document.getElementById("wtr-whole-word");
+    if (wholeWordCheckbox) {
+        wholeWordCheckbox.checked = false;
+        wholeWordCheckbox.disabled = true;
+    }
+}
+function setupReaderControlHardening() {
+    let syncTimeout = null;
+    const scheduleSync = () => {
+        if (syncTimeout) {
+            clearTimeout(syncTimeout);
+        }
+        syncTimeout = setTimeout(() => {
+            syncUITheme();
+            addMenuButton();
+            syncFloatingAddTermButtonPosition();
+        }, 100);
+    };
+    const observer = new MutationObserver(scheduleSync);
+    observer.observe(document.body, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: ["class", "style", "aria-pressed", "data-pressed"],
+    });
+    document.addEventListener("click", scheduleSync, true);
+    window.addEventListener("resize", scheduleSync);
+    scheduleSync();
+}
 function createUI() {
     if (document.querySelector(".wtr-replacer-ui")) {
         return;
@@ -3480,6 +4076,7 @@ function createUI() {
     uiContainer.className = "wtr-replacer-ui";
     uiContainer.innerHTML = UI_HTML;
     document.body.appendChild(uiContainer);
+    syncUITheme();
     const processingOverlay = document.createElement("div");
     processingOverlay.className = "wtr-processing-overlay";
     processingOverlay.textContent = "Processing...";
@@ -3525,6 +4122,7 @@ function createUI() {
     });
     wtrPopoverObserver.observe(document.body, { childList: true, subtree: true });
     _handlers__WEBPACK_IMPORTED_MODULE_1__/* .enhanceWtrTermPopovers */ .mA(document);
+    setupReaderControlHardening();
     // Add scroll event listener to save term list location
     const contentArea = uiContainer.querySelector(".wtr-replacer-content");
     if (contentArea) {
@@ -3570,7 +4168,17 @@ function createUI() {
     // Real-time regex validation system
     const saveButton = uiContainer.querySelector("#wtr-save-btn");
     const replacementInput = uiContainer.querySelector("#wtr-replacement");
+    const originalCounter = uiContainer.querySelector("#wtr-original-counter");
+    const replacementCounter = uiContainer.querySelector("#wtr-replacement-counter");
+    const updateAllCharacterCounters = () => {
+        updateCharacterCounter(originalTextarea, originalCounter);
+        updateCharacterCounter(replacementInput, replacementCounter);
+    };
     replacementInput.addEventListener("focus", _handlers__WEBPACK_IMPORTED_MODULE_1__/* .handleSuggestionTargetFocus */ .U8);
+    replacementInput.addEventListener("input", updateAllCharacterCounters);
+    originalTextarea.addEventListener("input", updateAllCharacterCounters);
+    uiContainer.querySelector("#wtr-variation-btn").addEventListener("click", () => normalizeOriginalAsVariations(originalTextarea, regexCheckbox));
+    uiContainer.querySelector("#wtr-wildchar-btn").addEventListener("click", () => insertWildChar(originalTextarea, regexCheckbox));
     function updateValidationVisual(state) {
         // Remove all validation classes
         originalTextarea.classList.remove("wtr-field-invalid", "wtr-field-valid", "wtr-field-warning");
@@ -3620,11 +4228,15 @@ function createUI() {
     regexCheckbox.addEventListener("change", validateAndUpdateUI);
     // Initial validation state
     validateAndUpdateUI();
+    updateAllCharacterCounters();
     // Create floating action button
     const addTermFloatBtn = document.createElement("button");
+    addTermFloatBtn.type = "button";
     addTermFloatBtn.className = "wtr-add-term-float-btn";
-    addTermFloatBtn.textContent = "Add Term";
+    addTermFloatBtn.title = "Add selected text to WTR Term Replacer";
+    addTermFloatBtn.innerHTML = '<svg class="icon inline-flex shrink-0 size-4"><use href="#edit"></use></svg><span>Replacer Term</span>';
     document.body.appendChild(addTermFloatBtn);
+    syncFloatingAddTermButtonPosition();
     addTermFloatBtn.addEventListener("click", _handlers__WEBPACK_IMPORTED_MODULE_1__/* .handleAddTermFromSelection */ .az);
     document.addEventListener("mouseup", _handlers__WEBPACK_IMPORTED_MODULE_1__/* .handleTextSelection */ .Me);
     document.addEventListener("touchend", _handlers__WEBPACK_IMPORTED_MODULE_1__/* .handleTextSelection */ .Me);
@@ -3809,6 +4421,7 @@ function renderTermList(filter = "") {
     }
 }
 function showUIPanel() {
+    syncUITheme();
     const ui = document.querySelector(".wtr-replacer-ui");
     ui.style.display = "flex";
     document.getElementById("wtr-disable-all").checked = _state__WEBPACK_IMPORTED_MODULE_0__/* .state */ .wk.settings.isDisabled;
@@ -3832,6 +4445,14 @@ function clearTermList() {
         listEl.innerHTML = "";
     }
 }
+function dispatchUiOnlyInput(element) {
+    if (!element) {
+        return;
+    }
+    const event = new Event("input", { bubbles: true });
+    event.wtrSkipSuggestions = true;
+    element.dispatchEvent(event);
+}
 function showFormView(term = null) {
     if (!term) {
         _handlers__WEBPACK_IMPORTED_MODULE_1__/* .clearDiscoveryFormState */ .nS();
@@ -3844,6 +4465,8 @@ function showFormView(term = null) {
     document.getElementById("wtr-whole-word").checked = term ? term.wholeWord : false;
     document.getElementById("wtr-whole-word").disabled = term ? term.isRegex : false;
     document.getElementById("wtr-save-btn").textContent = term ? "Update Term" : "Save Term";
+    dispatchUiOnlyInput(document.getElementById("wtr-original"));
+    dispatchUiOnlyInput(document.getElementById("wtr-replacement"));
     switchTab("add");
     // Initialize auto-resize after form is populated
     setTimeout(() => {
@@ -3857,8 +4480,7 @@ function showFormView(term = null) {
         // Re-initialize validation state for the form
         const regexCheckbox = document.getElementById("wtr-is-regex");
         if (regexCheckbox) {
-            const validationEvent = new Event("input", { bubbles: true });
-            originalTextarea.dispatchEvent(validationEvent);
+            dispatchUiOnlyInput(originalTextarea);
         }
     }, 10);
 }
@@ -3869,7 +4491,8 @@ function switchTab(tabName) {
 function createSimpleMenuButton(options) {
     const { text = "Settings", onClick = null, className = "", tooltip = "" } = options;
     const button = document.createElement("button");
-    button.className = `replacer-settings-btn ${className}`;
+    button.type = "button";
+    button.className = `replacer-settings-btn ${className}`.trim();
     if (tooltip) {
         button.title = tooltip;
     }
@@ -3879,7 +4502,7 @@ function createSimpleMenuButton(options) {
     svg.setAttribute("height", "24px");
     svg.setAttribute("viewBox", "0 -960 960 960");
     svg.setAttribute("width", "24px");
-    svg.setAttribute("fill", "#1f1f1f");
+    svg.setAttribute("fill", "currentColor");
     svg.style.marginRight = "4px";
     svg.style.verticalAlign = "middle";
     svg.innerHTML =
@@ -3895,53 +4518,92 @@ function createSimpleMenuButton(options) {
     }
     return button;
 }
+function normalizeMenuText(element) {
+    return (element?.textContent || "").replace(/\s+/g, " ").trim();
+}
+function findMenuButtonTargets() {
+    const targets = [];
+    const legacyButton = document.querySelector("button.term-edit-btn:not(.replacer-settings-btn)");
+    const legacyContainer = legacyButton?.closest("div.col-6, [role='group'], .btn-group");
+    if (legacyButton && legacyContainer) {
+        targets.push({ container: legacyContainer, originalButton: legacyButton, layout: "legacy" });
+    }
+    const newEditButtons = Array.from(document.querySelectorAll("button")).filter((button) => normalizeMenuText(button) === "Edit Terms" && !button.classList.contains("replacer-settings-btn"));
+    newEditButtons.forEach((button) => {
+        const container = button.closest(".grid, [data-slot='tabs-content'], .chapter-wrap, .chapter-tracker");
+        if (container && !targets.some((target) => target.container === container)) {
+            targets.push({ container, originalButton: button, layout: "new-grid" });
+        }
+    });
+    return targets;
+}
 function addMenuButton() {
-    const container = document.querySelector("div.col-6:has(button.term-edit-btn)");
-    if (!container || _state__WEBPACK_IMPORTED_MODULE_0__/* .state */ .wk.observedMenuContainers.has(container)) {
+    const targets = findMenuButtonTargets();
+    if (targets.length === 0) {
         return;
     }
-    const ensureButtonState = () => {
-        let settingsButton = container.querySelector(".replacer-settings-btn");
-        const originalButton = container.querySelector(".term-edit-btn:not(.replacer-settings-btn)");
-        // 1. Create the button if it doesn't exist
-        if (!settingsButton) {
-            if (!originalButton) {
-                return;
-            } // Can't create if the original doesn't exist yet
-            // Create button with simple inline SVG icon
-            settingsButton = createSimpleMenuButton({
-                text: "Term Settings",
-                onClick: showUIPanel,
-                className: originalButton.className, // Copy classes for styling
-                tooltip: "Open WTR Term Settings",
-            });
-            container.appendChild(settingsButton);
-            (0,_utils__WEBPACK_IMPORTED_MODULE_3__/* .log */ .Rm)(_state__WEBPACK_IMPORTED_MODULE_0__/* .state */ .wk.globalSettings, "WTR Term Replacer: Settings button created with simple icon system.");
+    targets.forEach(({ container, originalButton, layout }) => {
+        if (!container || _state__WEBPACK_IMPORTED_MODULE_0__/* .state */ .wk.observedMenuContainers.has(container)) {
+            return;
         }
-        // 2. Enforce the correct order (our button should be last)
-        if (container.lastChild !== settingsButton) {
-            container.appendChild(settingsButton);
-            (0,_utils__WEBPACK_IMPORTED_MODULE_3__/* .log */ .Rm)(_state__WEBPACK_IMPORTED_MODULE_0__/* .state */ .wk.globalSettings, "WTR Term Replacer: Settings button order corrected.");
-        }
-        // 3. Apply consistent styling
-        if (originalButton && settingsButton) {
-            const desiredFlexStyle = "1 1 0%";
-            container.style.display = "flex";
-            container.style.gap = "5px";
-            originalButton.style.flex = desiredFlexStyle;
-            settingsButton.style.flex = desiredFlexStyle;
-        }
-    };
-    // Run once immediately
-    ensureButtonState();
-    // Observe for any changes and re-run to correct the state
-    const observer = new MutationObserver(() => {
-        (0,_utils__WEBPACK_IMPORTED_MODULE_3__/* .log */ .Rm)(_state__WEBPACK_IMPORTED_MODULE_0__/* .state */ .wk.globalSettings, "WTR Term Replacer: Detected change in menu container, ensuring button state.");
+        const findOriginalButton = () => {
+            if (layout === "legacy") {
+                return container.querySelector(".term-edit-btn:not(.replacer-settings-btn)") || originalButton;
+            }
+            return (Array.from(container.querySelectorAll("button")).find((button) => normalizeMenuText(button) === "Edit Terms" && !button.classList.contains("replacer-settings-btn")) || originalButton);
+        };
+        const ensureButtonState = () => {
+            let settingsButton = container.querySelector(".replacer-settings-btn");
+            const currentOriginalButton = findOriginalButton();
+            // 1. Create the button if it doesn't exist
+            if (!settingsButton) {
+                if (!currentOriginalButton) {
+                    return;
+                } // Can't create if the original doesn't exist yet
+                // Create button with simple inline SVG icon
+                settingsButton = createSimpleMenuButton({
+                    text: "Term Settings",
+                    onClick: showUIPanel,
+                    className: currentOriginalButton.className, // Copy classes for styling
+                    tooltip: "Open WTR Term Settings",
+                });
+                settingsButton.setAttribute("data-wtr-replacer-menu", layout);
+                container.appendChild(settingsButton);
+                (0,_utils__WEBPACK_IMPORTED_MODULE_3__/* .log */ .Rm)(_state__WEBPACK_IMPORTED_MODULE_0__/* .state */ .wk.globalSettings, "WTR Term Replacer: Settings button created with simple icon system.");
+            }
+            // 2. Enforce the correct order (our button should be last)
+            if (container.lastChild !== settingsButton) {
+                container.appendChild(settingsButton);
+                (0,_utils__WEBPACK_IMPORTED_MODULE_3__/* .log */ .Rm)(_state__WEBPACK_IMPORTED_MODULE_0__/* .state */ .wk.globalSettings, "WTR Term Replacer: Settings button order corrected.");
+            }
+            // 3. Apply consistent styling without overriding the new grid layout.
+            if (currentOriginalButton && settingsButton) {
+                if (layout === "legacy") {
+                    const desiredFlexStyle = "1 1 0%";
+                    container.style.display = "flex";
+                    container.style.gap = "5px";
+                    currentOriginalButton.style.flex = desiredFlexStyle;
+                    settingsButton.style.flex = desiredFlexStyle;
+                }
+                else {
+                    settingsButton.style.width = "100%";
+                    if (container.classList.contains("grid")) {
+                        settingsButton.style.gridColumn = "span 2 / span 2";
+                    }
+                }
+            }
+        };
+        // Run once immediately
         ensureButtonState();
+        // Observe for any changes and re-run to correct the state
+        const observer = new MutationObserver(() => {
+            (0,_utils__WEBPACK_IMPORTED_MODULE_3__/* .log */ .Rm)(_state__WEBPACK_IMPORTED_MODULE_0__/* .state */ .wk.globalSettings, "WTR Term Replacer: Detected change in menu container, ensuring button state.");
+            ensureButtonState();
+        });
+        observer.observe(container, { childList: true });
+        // Mark this container as observed to prevent re-attaching observers
+        _state__WEBPACK_IMPORTED_MODULE_0__/* .state */ .wk.observedMenuContainers.add(container);
     });
-    observer.observe(container, { childList: true });
-    // Mark this container as observed to prevent re-attaching observers
-    _state__WEBPACK_IMPORTED_MODULE_0__/* .state */ .wk.observedMenuContainers.add(container);
 }
 
 
@@ -3955,13 +4617,19 @@ function addMenuButton() {
 /* harmony export */   Nt: () => (/* binding */ escapeRegExp),
 /* harmony export */   Rm: () => (/* binding */ log),
 /* harmony export */   Ug: () => (/* binding */ getChapterIdFromUrl),
+/* harmony export */   aV: () => (/* binding */ getChapterProcessingId),
+/* harmony export */   b4: () => (/* binding */ findChapterBodyById),
+/* harmony export */   dF: () => (/* binding */ findChapterBodyForUrl),
 /* harmony export */   getNovelSlug: () => (/* binding */ getNovelSlug),
 /* harmony export */   o7: () => (/* binding */ getReaderContextFromPath)
 /* harmony export */ });
-/* unused harmony exports debounce, detectOtherWTRScripts, logDOMConflict, logProcessingWithMultiScriptContext, startProcessingTimer, endProcessingTimer, isContentReadyForProcessing, isElementReadyForProcessing, estimateContentLoadLevel */
+/* unused harmony exports debounce, getChapterNoFromUrl, findChapterContainerForUrl, detectOtherWTRScripts, logDOMConflict, logProcessingWithMultiScriptContext, startProcessingTimer, endProcessingTimer, isContentReadyForProcessing, isElementReadyForProcessing, estimateContentLoadLevel */
+/* unused harmony import specifier */ var CHAPTER_BODY_SELECTOR;
 /* harmony import */ var _config_versions__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(387);
 /* harmony import */ var _config_versions__WEBPACK_IMPORTED_MODULE_0___default = /*#__PURE__*/__webpack_require__.n(_config_versions__WEBPACK_IMPORTED_MODULE_0__);
+/* harmony import */ var _config__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(333);
 // Utility functions for WTR Lab Term Replacer
+
 
 function getReaderContextFromPath(pathname = window.location.pathname) {
     const parts = pathname.split("/").filter(Boolean);
@@ -4007,6 +4675,82 @@ function debounce(func, delay) {
 function getChapterIdFromUrl(url) {
     const match = url.match(/(chapter-\d+)/);
     return match ? match[1] : null;
+}
+function getChapterNoFromUrl(url = window.location.href) {
+    const match = url.match(/chapter-(\d+)/);
+    return match ? match[1] : null;
+}
+function queryFirst(root = document, selectors) {
+    for (const selector of selectors.filter(Boolean)) {
+        const match = root.querySelector(selector);
+        if (match) {
+            return match;
+        }
+    }
+    return null;
+}
+function findChapterBodyById(chapterIdOrNo, root = document) {
+    if (!chapterIdOrNo) {
+        return null;
+    }
+    const rawValue = String(chapterIdOrNo);
+    const chapterNo = rawValue.match(/\d+/)?.[0];
+    const chapterId = rawValue.startsWith("chapter-") ? rawValue : chapterNo ? `chapter-${chapterNo}` : rawValue;
+    const selectors = [
+        `#${chapterId} ${_config__WEBPACK_IMPORTED_MODULE_1__/* .CHAPTER_BODY_SELECTOR */ .tA}`,
+        chapterNo ? `#tracker-${chapterNo} ${_config__WEBPACK_IMPORTED_MODULE_1__/* .CHAPTER_BODY_SELECTOR */ .tA}` : "",
+        chapterNo ? `.chapter-tracker[data-chapter-no="${chapterNo}"] ${_config__WEBPACK_IMPORTED_MODULE_1__/* .CHAPTER_BODY_SELECTOR */ .tA}` : "",
+        chapterNo ? `[data-chapter-no="${chapterNo}"] ${_config__WEBPACK_IMPORTED_MODULE_1__/* .CHAPTER_BODY_SELECTOR */ .tA}` : "",
+    ];
+    return queryFirst(root, selectors);
+}
+function findChapterBodyForUrl(root = document, url = window.location.href) {
+    const chapterId = getChapterIdFromUrl(url);
+    const chapterNo = getChapterNoFromUrl(url);
+    const selectors = [
+        chapterId ? `#${chapterId} ${_config__WEBPACK_IMPORTED_MODULE_1__/* .CHAPTER_BODY_SELECTOR */ .tA}` : "",
+        chapterNo ? `#tracker-${chapterNo} ${_config__WEBPACK_IMPORTED_MODULE_1__/* .CHAPTER_BODY_SELECTOR */ .tA}` : "",
+        chapterNo ? `.chapter-tracker.active[data-chapter-no="${chapterNo}"] ${_config__WEBPACK_IMPORTED_MODULE_1__/* .CHAPTER_BODY_SELECTOR */ .tA}` : "",
+        chapterNo ? `.chapter-tracker[data-chapter-no="${chapterNo}"] ${_config__WEBPACK_IMPORTED_MODULE_1__/* .CHAPTER_BODY_SELECTOR */ .tA}` : "",
+        chapterNo ? `[data-chapter-no="${chapterNo}"] ${_config__WEBPACK_IMPORTED_MODULE_1__/* .CHAPTER_BODY_SELECTOR */ .tA}` : "",
+        `.chapter-tracker.active ${_config__WEBPACK_IMPORTED_MODULE_1__/* .CHAPTER_BODY_SELECTOR */ .tA}`,
+        `.chapter-container[id^="chapter-"] ${_config__WEBPACK_IMPORTED_MODULE_1__/* .CHAPTER_BODY_SELECTOR */ .tA}`,
+        _config__WEBPACK_IMPORTED_MODULE_1__/* .CHAPTER_BODY_SELECTOR */ .tA,
+    ];
+    return queryFirst(root, selectors);
+}
+function findChapterContainerForUrl(root = document, url = window.location.href) {
+    const chapterBody = findChapterBodyForUrl(root, url);
+    if (chapterBody) {
+        return chapterBody.closest(".chapter-container, .chapter-tracker, article, main") || chapterBody;
+    }
+    const chapterId = getChapterIdFromUrl(url);
+    const chapterNo = getChapterNoFromUrl(url);
+    const selectors = [
+        chapterId ? `#${chapterId}` : "",
+        chapterNo ? `#tracker-${chapterNo}` : "",
+        chapterNo ? `.chapter-tracker.active[data-chapter-no="${chapterNo}"]` : "",
+        chapterNo ? `.chapter-tracker[data-chapter-no="${chapterNo}"]` : "",
+        ".chapter-tracker.active",
+        '.chapter-container[id^="chapter-"]',
+    ];
+    return queryFirst(root, selectors);
+}
+function getChapterProcessingId(url = window.location.href, chapterBody = null) {
+    const urlChapterId = getChapterIdFromUrl(url);
+    if (urlChapterId) {
+        return urlChapterId;
+    }
+    const trackerChapterNo = chapterBody?.closest?.(".chapter-tracker")?.getAttribute("data-chapter-no");
+    if (trackerChapterNo) {
+        return `chapter-${trackerChapterNo}`;
+    }
+    const containerId = chapterBody?.closest?.('.chapter-container[id^="chapter-"]')?.id;
+    if (containerId) {
+        return containerId;
+    }
+    const apiChapterId = chapterBody?.getAttribute?.("data-chapter-id");
+    return apiChapterId ? `api-chapter-${apiChapterId}` : null;
 }
 function log(globalSettings, ...args) {
     if (globalSettings && globalSettings.isLoggingEnabled) {
@@ -4086,7 +4830,8 @@ function isContentReadyForProcessing(container) {
     const hasSubstantialContent = container.textContent?.trim().length > 100;
     const hasNoActiveLoaders = !container.querySelector('.loading, .spinner, [style*="loading"], .skeleton');
     const isVisible = container.offsetWidth > 0 && container.offsetHeight > 0;
-    const hasChapterContent = container.querySelector(".chapter-body") || container.querySelector("p, h1, h2, h3, h4, h5, h6");
+    const hasChapterContent = container.querySelector(`${CHAPTER_BODY_SELECTOR}, .wtr-line, [data-line]`) ||
+        container.querySelector("p, h1, h2, h3, h4, h5, h6");
     return hasSubstantialContent && hasNoActiveLoaders && isVisible && hasChapterContent;
 }
 // Element readiness check for robust processing
@@ -4124,7 +4869,7 @@ function estimateContentLoadLevel(chapterBody) {
 (module) {
 
 "use strict";
-module.exports = /*#__PURE__*/JSON.parse('{"name":"wtr-lab-term-replacer-webpack","version":"5.7.0","description":"A modular, Webpack-powered TypeScript version of the WTR Lab Term Replacer userscript.","author":"MasuRii","license":"MIT","private":true,"main":"dist/wtr-lab-term-replacer-webpack.user.js","repository":{"type":"git","url":"https://github.com/MasuRii/wtr-lab-term-replacer-webpack.git"},"bugs":{"url":"https://github.com/MasuRii/wtr-lab-term-replacer-webpack/issues"},"keywords":["term","replacement","wtr-lab","userscript","modular","webpack"],"files":["dist/","src/"],"scripts":{"build":"npm run version:update && npm run typecheck && webpack --mode=production","build:performance":"npm run typecheck && webpack --config webpack.config.js --config-name performance --mode=production","build:greasyfork":"npm run typecheck && webpack --config webpack.config.js --config-name greasyfork --mode=production","build:devbundle":"npm run typecheck && webpack --config webpack.config.js --config-name dev --mode=development","dev":"webpack serve --config webpack.config.js --config-name dev --mode=development","typecheck":"tsc --noEmit","test":"node scripts/run-tests.js","version:update":"node scripts/update-versions.js update","version:check":"node scripts/update-versions.js check"},"devDependencies":{"@types/tampermonkey":"^5.0.5","ts-loader":"^9.5.7","typescript":"^6.0.3","webpack":"^5.106.2","webpack-cli":"^7.0.2","webpack-dev-server":"^5.2.3","webpack-userscript":"^3.2.3"}}');
+module.exports = /*#__PURE__*/JSON.parse('{"name":"wtr-lab-term-replacer-webpack","version":"5.7.1","description":"A modular, Webpack-powered TypeScript version of the WTR Lab Term Replacer userscript.","author":"MasuRii","license":"MIT","private":true,"main":"dist/wtr-lab-term-replacer-webpack.user.js","repository":{"type":"git","url":"https://github.com/MasuRii/wtr-lab-term-replacer-webpack.git"},"bugs":{"url":"https://github.com/MasuRii/wtr-lab-term-replacer-webpack/issues"},"keywords":["term","replacement","wtr-lab","userscript","modular","webpack"],"files":["dist/","src/"],"scripts":{"build":"npm run version:update && npm run typecheck && webpack --mode=production","build:performance":"npm run typecheck && webpack --config webpack.config.js --config-name performance --mode=production","build:greasyfork":"npm run typecheck && webpack --config webpack.config.js --config-name greasyfork --mode=production","build:devbundle":"npm run typecheck && webpack --config webpack.config.js --config-name dev --mode=development","dev":"webpack serve --config webpack.config.js --config-name dev --mode=development","typecheck":"tsc --noEmit","test":"node scripts/run-tests.js","version:update":"node scripts/update-versions.js update","version:check":"node scripts/update-versions.js check"},"devDependencies":{"@types/tampermonkey":"^5.0.5","ts-loader":"^9.5.7","typescript":"^6.0.3","webpack":"^5.106.2","webpack-cli":"^7.0.2","webpack-dev-server":"^5.2.3","webpack-userscript":"^3.2.3"}}');
 
 /***/ }
 
@@ -4213,11 +4958,6 @@ var __webpack_exports__ = {};
 
  // Import all handlers
 
-// Function to get chapter ID from URL (for module compatibility)
-function getChapterIdFromUrl(url) {
-    const match = url.match(/(chapter-\d+)/);
-    return match ? match[1] : null;
-}
 // Enhanced error handling setup
 function setupEnhancedErrorHandling() {
     // Global error handler to catch and log any issues
@@ -4289,12 +5029,11 @@ function addDisableAllRobustness() {
         _modules_state__WEBPACK_IMPORTED_MODULE_3__/* .state */ .wk.settings.isDisabled = shouldDisable;
         await (await Promise.resolve(/* import() */).then(__webpack_require__.bind(__webpack_require__, 694))).saveSettings(_modules_state__WEBPACK_IMPORTED_MODULE_3__/* .state */ .wk.settings);
         // Perform robust disable/enable operation
-        const chapterId = getChapterIdFromUrl(window.location.href);
+        const chapterId = (0,_modules_utils__WEBPACK_IMPORTED_MODULE_5__/* .getChapterIdFromUrl */ .Ug)(window.location.href);
         if (!chapterId) {
             return;
         }
-        const chapterSelector = `#${chapterId} .chapter-body`;
-        const chapterBody = document.querySelector(chapterSelector);
+        const chapterBody = (0,_modules_utils__WEBPACK_IMPORTED_MODULE_5__/* .findChapterBodyForUrl */ .dF)(document);
         if (chapterBody) {
             try {
                 const { performReplacements, revertAllReplacements } = await Promise.resolve(/* import() */).then(__webpack_require__.bind(__webpack_require__, 9));
@@ -4405,12 +5144,12 @@ async function main() {
     // Enhanced initialization with robustness features
     (0,_modules_utils__WEBPACK_IMPORTED_MODULE_5__/* .log */ .Rm)(_modules_state__WEBPACK_IMPORTED_MODULE_3__/* .state */ .wk.globalSettings, "WTR Term Replacer: Setting up error handling...");
     setupEnhancedErrorHandling();
-    (0,_modules_utils__WEBPACK_IMPORTED_MODULE_5__/* .log */ .Rm)(_modules_state__WEBPACK_IMPORTED_MODULE_3__/* .state */ .wk.globalSettings, "WTR Term Replacer: Setting up disable functionality...");
-    addDisableAllRobustness();
     (0,_modules_utils__WEBPACK_IMPORTED_MODULE_5__/* .log */ .Rm)(_modules_state__WEBPACK_IMPORTED_MODULE_3__/* .state */ .wk.globalSettings, "WTR Term Replacer: Setting up navigation handling...");
     setupEnhancedNavigationHandling();
     (0,_modules_utils__WEBPACK_IMPORTED_MODULE_5__/* .log */ .Rm)(_modules_state__WEBPACK_IMPORTED_MODULE_3__/* .state */ .wk.globalSettings, "WTR Term Replacer: Creating UI and menu commands...");
     (0,_modules_ui__WEBPACK_IMPORTED_MODULE_0__/* .createUI */ .RD)(); // This will also set up the initial event listeners
+    (0,_modules_utils__WEBPACK_IMPORTED_MODULE_5__/* .log */ .Rm)(_modules_state__WEBPACK_IMPORTED_MODULE_3__/* .state */ .wk.globalSettings, "WTR Term Replacer: Setting up disable functionality...");
+    addDisableAllRobustness();
     (0,_modules_utils__WEBPACK_IMPORTED_MODULE_5__/* .log */ .Rm)(_modules_state__WEBPACK_IMPORTED_MODULE_3__/* .state */ .wk.globalSettings, "WTR Term Replacer: Registering menu commands...");
     GM_registerMenuCommand("Term Replacer Settings", _modules_ui__WEBPACK_IMPORTED_MODULE_0__/* .showUIPanel */ .E1);
     GM_registerMenuCommand("Toggle Logging", _modules_handlers__WEBPACK_IMPORTED_MODULE_4__/* .toggleLogging */ .o6);

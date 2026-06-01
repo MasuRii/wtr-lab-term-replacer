@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name WTR Lab Term Replacer [DEV]
 // @description A modular, Webpack-powered TypeScript version of the WTR Lab Term Replacer userscript.
-// @version 5.7.0-dev.1778928568005
+// @version 5.7.1-dev.1780337969469
 // @author MasuRii
 // @homepage https://github.com/MasuRii/wtr-lab-term-replacer-webpack#readme
 // @supportURL https://github.com/MasuRii/wtr-lab-term-replacer-webpack/issues
