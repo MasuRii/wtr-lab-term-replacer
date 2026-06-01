@@ -1,6 +1,6 @@
 # WTR Lab Term Replacer
 
-[![Version](https://img.shields.io/badge/version-5.7.0-blue.svg)](https://github.com/MasuRii/wtr-lab-term-replacer-webpack/releases)
+[![Version](https://img.shields.io/badge/version-5.7.1-blue.svg)](https://github.com/MasuRii/wtr-lab-term-replacer-webpack/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/MasuRii/wtr-lab-term-replacer-webpack/blob/main/LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-6.0-blue?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Built with Webpack](https://img.shields.io/badge/Built%20with-Webpack-8DD6F9?logo=webpack&logoColor=white)](https://webpack.js.org/)
@@ -35,8 +35,9 @@ Grab the latest `.user.js` file from the `dist/` folder (or from the [Releases p
 - **Import and export** — back up your term lists or share them as JSON.
 - **Duplicate detection** — the script warns you when a new term conflicts with an existing one.
 - **Finder bridge** — if WTR Lab Term Inconsistency Finder is also running, it can read your saved terms directly. No import/export step needed.
-- **Smart suggestions** — click WTR's built-in term popovers or type an original value to get source/current/WTR/API/Google suggestions you can insert into Original Text or Replacement Text.
-- **Regex-friendly term building** — suggestion clicks and refreshes can build `|`-based regex alternatives, normalize slash or spaced separators, warn when regex-like text is saved with Regex off, and sort longer alternatives first.
+- **Smart suggestions** — click WTR's built-in term popovers or type an original value to get WTR-style source/current/WTR/API/Google suggestion badges you can insert into Original Text or Replacement Text.
+- **Regex-friendly term building** — suggestion clicks, refreshes, Variation, and Wild Char helpers can build `|`-based regex alternatives, normalize slash or spaced separators, warn when regex-like text is saved with Regex off, and sort longer alternatives first.
+- **New WTR Lab reader support** — works with WTR Lab's current `.chapter-tracker` reader, new `Edit Terms` controls, Base UI term popovers, dark mode, and native floating `Add Term` controls while preserving legacy reader support.
 
 ## Building from Source
 
@@ -104,7 +105,7 @@ All saved term data stays in your browser through the userscript manager's stora
 
 ## Versioning
 
-The current version is **v5.7.0**. Version info is kept in `config/versions.js`, and `npm run version:update` syncs it across the package metadata and generated source files.
+The current version is **v5.7.1**. Version info is kept in `config/versions.js`, and `npm run version:update` syncs it across the package metadata and generated source files.
 
 See [CHANGELOG.md](CHANGELOG.md) for the full release history.
 

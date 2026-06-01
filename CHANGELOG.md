@@ -8,6 +8,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 No unreleased changes.
 
+## [5.7.1] - 2026-06-02
+
+### Added
+- Added Original Text and Replacement Text character counters.
+- Added WTR-inspired `Variation` and `Wild Char` helpers for building regex-friendly original text patterns.
+- Added switch-style controls for Disable All, Case Sensitive, Use Regex, and Whole Word Only.
+- Added an explicit “This term applies to this novel only” note to match current storage behavior.
+
+### Fixed
+- Restored term replacement on WTR Lab's new reader frontend by detecting the new `.chapter-tracker`, `#tracker-<chapter>`, `.wtr-line`, and `[data-line]` chapter structures.
+- Fixed settings-button injection for the new reader controls by supporting the new `Edit Terms` grid layout while keeping the legacy `.term-edit-btn` path.
+- Fixed WTR term popover integration for the new Base UI popover markup so `+ Replacer` suggestions still work from source/current/WTR/Google choices.
+- Reworked the floating selected-text add button to sit above WTR Lab's own floating `Add Term` button with matching compact styling and a distinct Replacer color.
+- Synced the Term Replacer modal theme with WTR Lab dark mode, dark website theme selection, and dark reader theme samples to prevent accidental light-mode panels.
+- Removed the large popover spacing between WTR Lab's own `+ Term` action and the Term Replacer `+ Replacer` action.
+- Fixed popover-launched suggestions disappearing after the Add/Edit form initialized or after refresh.
+- Fixed WTR dictionary suggestions inheriting repeated glossary counts; only user/API/current preference suggestions display counts.
+- Added an existing-term modal when `+ Replacer` is used on a term already saved in Term Replacer storage, with a one-click path to open that saved term.
+- Fixed late-loading WTR Google Translate suggestions not appearing in the Term Replacer suggestion list.
+
+### Changed
+- Hardened chapter reprocessing, disable/enable toggles, and DOM re-acquisition so SPA navigation and delayed reader rendering no longer depend on one legacy selector.
+- Restyled replacement suggestions as WTR-style compact badges with source/profile/dictionary/Google icons instead of Bootstrap text buttons.
+- Tightened Add/Edit form density with WTR-inspired labels, helper buttons, compact inputs, and spacing.
+- Added CSS variable fallbacks so the Term Replacer panel remains usable on the new non-Bootstrap WTR Lab frontend.
+
 ## [5.7.0] - 2026-05-16
 
 ### Added
