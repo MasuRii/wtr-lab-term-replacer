@@ -12,7 +12,7 @@ A userscript that replaces terms on WTR-Lab.com chapters so you can read with th
 You can manage term lists per novel, import and export your lists, catch duplicates automatically, and — if you also use [WTR Lab Term Inconsistency Finder](https://github.com/MasuRii/wtr-term-inconsistency-finder) — share saved terms between the two scripts at runtime without any manual file swapping.
 
 <img width="650" height="796" alt="image" src="https://github.com/user-attachments/assets/8e7811d2-67eb-46b7-b920-a43e90284580" />
-<img width="650" height="443" alt="image" src="https://github.com/user-attachments/assets/da58cc63-94fe-4e41-9fe4-28268691f08c" />
+<img width="650" height="518" alt="image" src="https://github.com/user-attachments/assets/c3ae8c26-47d2-40fa-9c03-cdb83451f731" />
 <img width="650" height="295" alt="image" src="https://github.com/user-attachments/assets/0edb6ebb-d4ae-49a6-8512-b9f439685de8" />
 
 ## Installing the Userscript
