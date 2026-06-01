@@ -1,10 +1,10 @@
 /**
- * WTR Lab Term Replacer v5.7.0
- * Built: 2026-05-16 (production)
+ * WTR Lab Term Replacer v5.7.1
+ * Built: 2026-06-02 (production)
  *
  * A modular, Webpack-powered TypeScript version of the WTR Lab Term Replacer userscript.
  *
- * @version 5.7.0
+ * @version 5.7.1
  * @build production
- * @date 2026-05-16
+ * @date 2026-06-02
  */
