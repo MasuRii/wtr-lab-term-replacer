@@ -22,10 +22,11 @@ import {
 	hideUILoader,
 	switchTab,
 	clearTermList,
+	syncFloatingAddTermButtonPosition,
 } from "./ui"
 import { reprocessCurrentChapter } from "./observer"
 import { computeDupGroups, updateDupModeAfterChange } from "./duplicates"
-import { log } from "./utils"
+import { findChapterBodyForUrl, log } from "./utils"
 import { performReplacements, revertAllReplacements } from "./engine"
 import {
 	DiscoveredTermCandidate,
@@ -102,6 +103,39 @@ function getSuggestionPresenceLabels(suggestion: string): string[] {
 	return labels
 }
 
+function shouldShowSuggestionCount(suggestion: ReplacementSuggestion): boolean {
+	const sourceLabel = (suggestion.sourceLabel || "").toLowerCase()
+	return suggestion.count > 0 && /current|api|user|profile|preference/.test(sourceLabel)
+}
+
+function getSuggestionVisualMeta(suggestion: ReplacementSuggestion) {
+	const sourceLabel = suggestion.sourceLabel || "WTR"
+	const normalizedSource = sourceLabel.toLowerCase()
+	if (shouldShowSuggestionCount(suggestion)) {
+		return { kind: "profile", icon: "profile", sourceLabel }
+	}
+	if (normalizedSource.includes("google")) {
+		return { kind: "google", icon: "g_translate", sourceLabel }
+	}
+	if (normalizedSource.includes("source")) {
+		return { kind: "source", icon: "text_fields", sourceLabel }
+	}
+	if (normalizedSource.includes("field")) {
+		return { kind: "field", icon: "edit", sourceLabel }
+	}
+	return { kind: "wtr", icon: "dictionary", sourceLabel }
+}
+
+function createSuggestionIcon(iconName: string): SVGElement {
+	const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg")
+	svg.setAttribute("class", "icon inline-flex shrink-0 size-4")
+	svg.setAttribute("aria-hidden", "true")
+	const use = document.createElementNS("http://www.w3.org/2000/svg", "use")
+	use.setAttribute("href", `#${iconName}`)
+	svg.appendChild(use)
+	return svg
+}
+
 function renderReplacementSuggestions(suggestions: ReplacementSuggestion[], message = "") {
 	const container = document.getElementById("wtr-replacement-suggestions")
 	if (!container) {
@@ -124,22 +158,30 @@ function renderReplacementSuggestions(suggestions: ReplacementSuggestion[], mess
 	buttonWrap.className = "wtr-replacement-suggestion-buttons"
 	suggestions.forEach((suggestion) => {
 		const presenceLabels = getSuggestionPresenceLabels(suggestion.replacement)
+		const visualMeta = getSuggestionVisualMeta(suggestion)
+		const displayCount = shouldShowSuggestionCount(suggestion) ? suggestion.count : 0
+		const metaParts = [visualMeta.sourceLabel, displayCount > 0 ? String(displayCount) : "", ...presenceLabels].filter(Boolean)
 		const button = document.createElement("button")
 		button.type = "button"
-		button.className = `btn btn-secondary btn-sm wtr-replacement-suggestion-btn${presenceLabels.length ? " wtr-suggestion-existing" : ""}`
+		button.className = `wtr-replacement-suggestion-btn wtr-suggestion-${visualMeta.kind}${presenceLabels.length ? " wtr-suggestion-existing" : ""}`
 		button.dataset.replacement = suggestion.replacement
+		button.title = metaParts.join(" • ")
+
+		const iconSegment = document.createElement("span")
+		iconSegment.className = "wtr-suggestion-icon-segment"
+		iconSegment.appendChild(createSuggestionIcon(visualMeta.icon))
+		if (displayCount > 0) {
+			const countLabel = document.createElement("span")
+			countLabel.textContent = String(displayCount)
+			iconSegment.appendChild(countLabel)
+		}
+		button.appendChild(iconSegment)
 
 		const replacementLabel = document.createElement("span")
+		replacementLabel.className = "wtr-suggestion-label"
 		replacementLabel.textContent = suggestion.replacement
 		button.appendChild(replacementLabel)
 
-		const metaParts = [suggestion.sourceLabel, suggestion.count > 0 ? String(suggestion.count) : "", ...presenceLabels].filter(Boolean)
-		if (metaParts.length > 0) {
-			const sourceLabel = document.createElement("small")
-			sourceLabel.className = "wtr-replacement-suggestion-source"
-			sourceLabel.textContent = metaParts.join(" • ")
-			button.appendChild(sourceLabel)
-		}
 		buttonWrap.appendChild(button)
 	})
 	container.appendChild(buttonWrap)
@@ -359,7 +401,7 @@ function mergeReplacementSuggestions(
 	for (const candidate of candidates) {
 		mergedSuggestions.push({
 			replacement: candidate.term,
-			count: candidate.count || 0,
+			count: 0,
 			sourceLabel: "Source",
 			sourceRank: -10,
 		})
@@ -371,7 +413,7 @@ function mergeReplacementSuggestions(
 		candidateReplacements.forEach((replacement) => {
 			mergedSuggestions.push({
 				replacement,
-				count: candidate.count || 0,
+				count: 0,
 				sourceLabel: "WTR",
 				sourceRank: 30,
 			})
@@ -469,6 +511,9 @@ export function clearDiscoveryFormState() {
 }
 
 export function handleReplacementSuggestionInput(event) {
+	if (event?.wtrSkipSuggestions) {
+		return
+	}
 	if (suppressNextReplacementSuggestionInput) {
 		suppressNextReplacementSuggestionInput = false
 		return
@@ -674,10 +719,77 @@ function getPopoverBadgeSuggestion(badge: Element): ReplacementSuggestion | null
 	return normalizeReplacementSuggestion(replacement, getPopoverBadgeCount(badge), "WTR", 50)
 }
 
-function getWtrPopoverContextFromElement(element: Element): WtrPopoverTermContext | null {
-	const sourceTerm = normalizePopoverText(element.querySelector(".text-underscore")?.textContent)
-	const popoverSuggestions = Array.from(element.querySelectorAll(".user-term .badge, .badge.bg-success, .badge.bg-primary"))
-		.map(getPopoverBadgeSuggestion)
+function getNewPopoverSuggestion(candidate: Element): ReplacementSuggestion | null {
+	const spans = Array.from(candidate.querySelectorAll("span"))
+	const labelSpan = spans
+		.slice()
+		.reverse()
+		.find((span) => {
+			const text = normalizePopoverText(span.textContent)
+			return text && !/^\d+\+?$/.test(text) && text !== "From" && text !== "To"
+		})
+	const replacement = normalizePopoverText(labelSpan?.textContent || candidate.textContent)
+	if (!replacement || replacement === "From" || replacement === "To") {
+		return null
+	}
+
+	const countText = spans.map((span) => normalizePopoverText(span.textContent)).find((text) => /^\d+\+?$/.test(text)) || ""
+	const count = countText ? Number.parseInt(countText, 10) || 0 : 0
+	const iconHref = candidate.querySelector("use")?.getAttribute("href") || ""
+	const classSource = `${getElementClassText(candidate)} ${iconHref}`
+
+	if (/g_translate|bg-google|google/i.test(classSource)) {
+		return normalizeReplacementSuggestion(replacement, count, "Google", 90)
+	}
+	if (/dictionary|profile|green|success/i.test(classSource)) {
+		return normalizeReplacementSuggestion(replacement, count, "WTR", 30)
+	}
+	return normalizeReplacementSuggestion(replacement, count, "WTR", 50)
+}
+
+function getNewWtrPopoverRoot(element: Element): Element | null {
+	const candidate = element.matches('[data-slot="popover-content"], [role="dialog"]')
+		? element
+		: element.querySelector('[data-slot="popover-content"], [role="dialog"]') ||
+			element.closest('[data-slot="popover-content"], [role="dialog"]')
+	if (!candidate) {
+		return null
+	}
+
+	const text = normalizePopoverText(candidate.textContent)
+	const iconHrefs = Array.from(candidate.querySelectorAll("use")).map(
+		(use) => use.getAttribute("href") || use.getAttribute("xlink:href") || "",
+	)
+	const hasTermChoices = iconHrefs.some((href) => /#(?:dictionary|g_translate|profile)/.test(href))
+	return text.includes("From") && text.includes("To") && hasTermChoices ? candidate : null
+}
+
+function getNewPopoverSuggestionElements(popoverRoot: Element): Element[] {
+	const byIcon = Array.from(popoverRoot.querySelectorAll("use"))
+		.filter((use) => /#(?:dictionary|g_translate|profile)/.test(use.getAttribute("href") || use.getAttribute("xlink:href") || ""))
+		.map((use) => use.closest('div[class*="inline-flex"][class*="cursor-pointer"]'))
+		.filter((candidate): candidate is Element => Boolean(candidate))
+	const byClass = Array.from(
+		popoverRoot.querySelectorAll('div.inline-flex.cursor-pointer, div[class*="cursor-pointer"][class*="rounded"][class*="text-xs"]'),
+	)
+	return [...byIcon, ...byClass].filter(
+		(candidate, index, list) =>
+			!candidate.closest(".wtr-replacer-popover-actions") &&
+			!candidate.closest("button") &&
+			list.indexOf(candidate) === index,
+	)
+}
+
+function getNewWtrPopoverContextFromElement(element: Element): WtrPopoverTermContext | null {
+	const popoverRoot = getNewWtrPopoverRoot(element)
+	if (!popoverRoot) {
+		return null
+	}
+
+	const sourceTerm = normalizePopoverText(popoverRoot.querySelector(".text-muted-foreground")?.textContent)
+	const suggestionElements = getNewPopoverSuggestionElements(popoverRoot)
+	const popoverSuggestions = suggestionElements
+		.map(getNewPopoverSuggestion)
 		.filter((suggestion): suggestion is ReplacementSuggestion => Boolean(suggestion))
 	const recentContext = state.wtrPopoverTermContext || {}
 	const recentSuggestions = Array.isArray(recentContext.suggestions) ? recentContext.suggestions : []
@@ -702,6 +814,56 @@ function getWtrPopoverContextFromElement(element: Element): WtrPopoverTermContex
 	}
 }
 
+function getWtrPopoverContextFromElement(element: Element): WtrPopoverTermContext | null {
+	const sourceTerm = normalizePopoverText(element.querySelector(".text-underscore")?.textContent)
+	const popoverSuggestions = Array.from(element.querySelectorAll(".user-term .badge, .badge.bg-success, .badge.bg-primary"))
+		.map(getPopoverBadgeSuggestion)
+		.filter((suggestion): suggestion is ReplacementSuggestion => Boolean(suggestion))
+
+	if (!sourceTerm && popoverSuggestions.length === 0) {
+		return getNewWtrPopoverContextFromElement(element)
+	}
+
+	const recentContext = state.wtrPopoverTermContext || {}
+	const recentSuggestions = Array.isArray(recentContext.suggestions) ? recentContext.suggestions : []
+	const original = normalizePopoverText(recentContext.original) || popoverSuggestions[0]?.replacement || sourceTerm
+	const resolvedSourceTerm = sourceTerm || normalizePopoverText(recentContext.sourceTerm)
+	const sourceSuggestion = normalizeReplacementSuggestion(resolvedSourceTerm, 0, "Source", -10)
+	const currentSuggestion = normalizeReplacementSuggestion(original, 0, "Current", 0)
+	const resolvedSuggestions = dedupeReplacementSuggestions([
+		...(sourceSuggestion ? [sourceSuggestion] : []),
+		...(currentSuggestion ? [currentSuggestion] : []),
+		...popoverSuggestions,
+		...recentSuggestions,
+	])
+
+	if (!original && !resolvedSourceTerm && resolvedSuggestions.length === 0) {
+		return null
+	}
+	return {
+		original,
+		sourceTerm: resolvedSourceTerm,
+		suggestions: resolvedSuggestions,
+	}
+}
+
+function mergePopoverContexts(
+	primary: WtrPopoverTermContext | null,
+	secondary: WtrPopoverTermContext | null,
+): WtrPopoverTermContext | null {
+	if (!primary) {
+		return secondary
+	}
+	if (!secondary) {
+		return primary
+	}
+	return {
+		original: normalizePopoverText(primary.original) || normalizePopoverText(secondary.original),
+		sourceTerm: normalizePopoverText(primary.sourceTerm) || normalizePopoverText(secondary.sourceTerm),
+		suggestions: dedupeReplacementSuggestions([...(primary.suggestions || []), ...(secondary.suggestions || [])]),
+	}
+}
+
 function encodePopoverContext(context: WtrPopoverTermContext): string {
 	return JSON.stringify(context)
 }
@@ -717,10 +879,23 @@ function decodePopoverContext(value: string | undefined): WtrPopoverTermContext 
 	}
 }
 
+function dispatchUiOnlyInput(element: Element | null) {
+	if (!element) {
+		return
+	}
+	const event = new Event("input", { bubbles: true })
+	;(event as any).wtrSkipSuggestions = true
+	element.dispatchEvent(event)
+}
+
 function openWtrPopoverTermContext(context: WtrPopoverTermContext) {
 	showUIPanel()
 	suppressNextReplacementSuggestionInput = true
 	showFormView()
+	if (replacementSuggestionTimeout) {
+		clearTimeout(replacementSuggestionTimeout)
+		replacementSuggestionTimeout = null
+	}
 	const originalInput = document.getElementById("wtr-original") as HTMLTextAreaElement | null
 	const replacementInput = document.getElementById("wtr-replacement") as HTMLInputElement | null
 	if (!originalInput || !replacementInput) {
@@ -730,6 +905,13 @@ function openWtrPopoverTermContext(context: WtrPopoverTermContext) {
 	originalInput.value = context.original || context.suggestions[0]?.replacement || context.sourceTerm || ""
 	originalInput.rows = Math.max(1, Math.ceil(originalInput.value.length / 40))
 	replacementInput.value = ""
+	dispatchUiOnlyInput(originalInput)
+	dispatchUiOnlyInput(replacementInput)
+	if (replacementSuggestionTimeout) {
+		clearTimeout(replacementSuggestionTimeout)
+		replacementSuggestionTimeout = null
+	}
+	suppressNextReplacementSuggestionInput = false
 	ensureDiscoveryState().replacementSuggestions = dedupeReplacementSuggestions(context.suggestions)
 	renderReplacementSuggestions(ensureDiscoveryState().replacementSuggestions as ReplacementSuggestion[])
 	activeSuggestionTarget = "replacement"
@@ -782,6 +964,158 @@ export function enhanceWtrTermPopovers(root: Document | Element = document) {
 
 		actionColumn.appendChild(buttonGroup)
 	})
+
+	const newPopoverRoots = [
+		...(root instanceof Element && getNewWtrPopoverRoot(root) ? [getNewWtrPopoverRoot(root)] : []),
+		...Array.from(root.querySelectorAll('[data-slot="popover-content"], [role="dialog"]')).map(getNewWtrPopoverRoot),
+	].filter((popoverRoot, index, list): popoverRoot is Element => Boolean(popoverRoot) && list.indexOf(popoverRoot) === index)
+
+	newPopoverRoots.forEach((popoverRoot) => {
+		const context = getNewWtrPopoverContextFromElement(popoverRoot)
+		if (!context) {
+			return
+		}
+		const existingButton = popoverRoot.querySelector(".wtr-replacer-popover-add-btn") as HTMLButtonElement | null
+		if (existingButton) {
+			const mergedContext = mergePopoverContexts(decodePopoverContext(existingButton.dataset.wtrContext), context)
+			if (mergedContext) {
+				existingButton.dataset.wtrContext = encodePopoverContext(mergedContext)
+			}
+			return
+		}
+		const actionColumn =
+			Array.from(popoverRoot.querySelectorAll("button")).find(
+				(button) => normalizePopoverText(button.textContent) === "Term",
+			)?.parentElement || popoverRoot.querySelector(".flex.flex-col.ms-2") || popoverRoot
+		const sourceButton = Array.from(actionColumn.querySelectorAll("button")).find(
+			(button) => normalizePopoverText(button.textContent) === "Term",
+		)
+		const openButton = document.createElement("button")
+		openButton.type = "button"
+		const sourceClassName = sourceButton?.className?.replace(/\bmt-auto\b/g, "").replace(/\s+/g, " ").trim()
+		openButton.className = sourceClassName
+			? `${sourceClassName} wtr-replacer-popover-add-btn`
+			: "btn btn-outline-primary btn-sm wtr-replacer-popover-add-btn"
+		openButton.style.marginTop = "0.25rem"
+		openButton.textContent = "+ Replacer"
+		openButton.dataset.wtrContext = encodePopoverContext(context)
+		if (actionColumn instanceof HTMLElement) {
+			actionColumn.style.gap = "0.25rem"
+		}
+		actionColumn.appendChild(openButton)
+	})
+}
+
+function getNormalizedTermValue(value: string | null | undefined): string {
+	return normalizePopoverText(value).toLocaleLowerCase()
+}
+
+function getContextLookupValues(context: WtrPopoverTermContext): string[] {
+	const values = new Map<string, string>()
+	const addValue = (value: string | null | undefined) => {
+		const normalized = normalizePopoverText(value)
+		if (normalized) {
+			values.set(normalized.toLocaleLowerCase(), normalized)
+		}
+	}
+	addValue(context.original)
+	addValue(context.sourceTerm)
+	context.suggestions.forEach((suggestion) => addValue(suggestion.replacement))
+	return Array.from(values.values())
+}
+
+function termMatchesLookupValue(term, lookupValues: string[]): boolean {
+	const normalizedLookupValues = lookupValues.map(getNormalizedTermValue).filter(Boolean)
+	const directValues = [term.original, term.replacement, ...Array.from(getExistingSuggestionTokens(term.original || ""))]
+	if (directValues.some((value) => normalizedLookupValues.includes(getNormalizedTermValue(value)))) {
+		return true
+	}
+	if (term.isRegex && term.original) {
+		try {
+			const regex = new RegExp(term.original, term.caseSensitive ? "" : "i")
+			return lookupValues.some((value) => regex.test(value))
+		} catch (_error) {
+			return false
+		}
+	}
+	return false
+}
+
+function findExistingTermsForContext(context: WtrPopoverTermContext) {
+	const lookupValues = getContextLookupValues(context)
+	if (lookupValues.length === 0) {
+		return []
+	}
+	return state.terms.filter((term) => termMatchesLookupValue(term, lookupValues))
+}
+
+function removeExistingTermModal() {
+	document.querySelector(".wtr-existing-term-modal")?.remove()
+}
+
+function showExistingTermModal(context: WtrPopoverTermContext, existingTerms) {
+	removeExistingTermModal()
+	showUIPanel()
+	const overlay = document.createElement("div")
+	overlay.className = "wtr-existing-term-modal"
+
+	const card = document.createElement("div")
+	card.className = "wtr-existing-term-card"
+	overlay.appendChild(card)
+
+	const header = document.createElement("div")
+	header.className = "wtr-existing-term-header"
+	header.textContent = "Existing Term Found"
+	card.appendChild(header)
+
+	const body = document.createElement("div")
+	body.className = "wtr-existing-term-body"
+	const message = document.createElement("p")
+	message.textContent = "This WTR term already appears in your Term Replacer storage. Open the saved term instead of creating a duplicate."
+	body.appendChild(message)
+
+	const list = document.createElement("div")
+	list.className = "wtr-existing-term-list"
+	existingTerms.slice(0, 5).forEach((term) => {
+		const openButton = document.createElement("button")
+		openButton.type = "button"
+		openButton.className = "wtr-existing-term-open-btn"
+		openButton.textContent = `${term.original} → ${term.replacement}`
+		openButton.addEventListener("click", () => {
+			removeExistingTermModal()
+			showUIPanel()
+			showFormView(term)
+		})
+		list.appendChild(openButton)
+	})
+	body.appendChild(list)
+	card.appendChild(body)
+
+	const actions = document.createElement("div")
+	actions.className = "wtr-existing-term-actions"
+	const closeButton = document.createElement("button")
+	closeButton.type = "button"
+	closeButton.className = "btn btn-secondary btn-sm"
+	closeButton.textContent = "Close"
+	closeButton.addEventListener("click", removeExistingTermModal)
+	const addAnywayButton = document.createElement("button")
+	addAnywayButton.type = "button"
+	addAnywayButton.className = "btn btn-primary btn-sm"
+	addAnywayButton.textContent = "Add Anyway"
+	addAnywayButton.addEventListener("click", () => {
+		removeExistingTermModal()
+		openWtrPopoverTermContext(context)
+	})
+	actions.appendChild(closeButton)
+	actions.appendChild(addAnywayButton)
+	card.appendChild(actions)
+
+	overlay.addEventListener("click", (modalEvent) => {
+		if (modalEvent.target === overlay) {
+			removeExistingTermModal()
+		}
+	})
+	document.body.appendChild(overlay)
 }
 
 export function handleWtrPopoverAddTermClick(event) {
@@ -791,8 +1125,16 @@ export function handleWtrPopoverAddTermClick(event) {
 	}
 	event.preventDefault()
 	event.stopPropagation()
-	const context = decodePopoverContext(button.dataset.wtrContext) || getWtrPopoverContextFromElement(button.closest(".popover-body") || button)
+	const popoverRoot =
+		button.closest('[data-slot="popover-content"], [role="dialog"], .popover-body') || button.closest(".popover-body") || button
+	const context = mergePopoverContexts(decodePopoverContext(button.dataset.wtrContext), getWtrPopoverContextFromElement(popoverRoot))
 	if (!context) {
+		return
+	}
+	button.dataset.wtrContext = encodePopoverContext(context)
+	const existingTerms = findExistingTermsForContext(context)
+	if (existingTerms.length > 0) {
+		showExistingTermModal(context, existingTerms)
 		return
 	}
 	openWtrPopoverTermContext(context)
@@ -877,6 +1219,8 @@ export async function handleSaveTerm() {
 	// Clear form fields
 	originalInput.value = ""
 	replacementInput.value = ""
+	originalInput.dispatchEvent(new Event("input", { bubbles: true }))
+	replacementInput.dispatchEvent(new Event("input", { bubbles: true }))
 	document.getElementById("wtr-term-id").value = ""
 	document.getElementById("wtr-case-sensitive").checked = false
 	document.getElementById("wtr-is-regex").checked = false
@@ -962,15 +1306,34 @@ export async function handleDeleteSelected() {
 	}
 }
 
+function getSelectionAnchorElement(selection: Selection | null): Element | null {
+	const anchorNode = selection?.anchorNode || null
+	if (!anchorNode) {
+		return null
+	}
+	return anchorNode.nodeType === Node.ELEMENT_NODE ? (anchorNode as Element) : anchorNode.parentElement
+}
+
 export function handleTextSelection(e) {
 	const CHAPTER_BODY_SELECTOR = ".chapter-body"
-	if (!e.target.closest(CHAPTER_BODY_SELECTOR)) {
+	const selection = window.getSelection()
+	const eventTarget = e.target instanceof Element ? e.target : null
+	const anchorElement = getSelectionAnchorElement(selection)
+	const isChapterSelection = Boolean(
+		eventTarget?.closest(CHAPTER_BODY_SELECTOR) || anchorElement?.closest(CHAPTER_BODY_SELECTOR),
+	)
+	const floatBtn = document.querySelector(".wtr-add-term-float-btn") as HTMLElement | null
+	if (!floatBtn) {
 		return
 	}
-	const selection = window.getSelection().toString().trim()
-	const floatBtn = document.querySelector(".wtr-add-term-float-btn")
-	if (selection && selection.length > 0 && selection.length < 100) {
-		floatBtn.style.display = "block"
+	if (!isChapterSelection) {
+		floatBtn.style.display = "none"
+		return
+	}
+	const selectedText = selection?.toString().trim() || ""
+	if (selectedText && selectedText.length > 0 && selectedText.length < 100) {
+		syncFloatingAddTermButtonPosition()
+		floatBtn.style.display = "flex"
 	} else {
 		floatBtn.style.display = "none"
 	}
@@ -981,7 +1344,11 @@ export function handleAddTermFromSelection() {
 	if (selection) {
 		showUIPanel()
 		showFormView()
-		document.getElementById("wtr-original").value = selection
+		const originalInput = document.getElementById("wtr-original") as HTMLTextAreaElement | null
+		if (originalInput) {
+			originalInput.value = selection
+			originalInput.dispatchEvent(new Event("input", { bubbles: true }))
+		}
 		document.getElementById("wtr-replacement").focus()
 	}
 	document.querySelector(".wtr-add-term-float-btn").style.display = "none"
@@ -1002,23 +1369,13 @@ export function handleSearch(e) {
 export async function handleDisableToggle(e) {
 	state.settings.isDisabled = e.target.checked
 	await saveSettings(state.settings)
-	const getChapterIdFromUrl = (url) => {
-		const match = url.match(/(chapter-\d+)/)
-		return match ? match[1] : null
-	}
-	const CHAPTER_BODY_SELECTOR = ".chapter-body"
 
-	const chapterId = getChapterIdFromUrl(window.location.href)
-	if (!chapterId) {
-		return
-	}
-	const chapterSelector = `#${chapterId} ${CHAPTER_BODY_SELECTOR}`
-	const chapterBody = document.querySelector(chapterSelector)
+	const chapterBody = findChapterBodyForUrl(document)
 	if (chapterBody) {
 		if (state.settings.isDisabled) {
-			revertAllReplacements(chapterBody)
+			await revertAllReplacements(chapterBody)
 		} else {
-			performReplacements(chapterBody)
+			await performReplacements(chapterBody)
 		}
 	}
 }

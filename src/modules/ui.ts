@@ -1,7 +1,7 @@
 import { state } from "./state"
 import * as Handlers from "./handlers"
 import { exitDupMode, changeDupGroup } from "./duplicates"
-import { log } from "./utils"
+import { escapeRegExp, log } from "./utils"
 import { ITEMS_PER_PAGE } from "./config"
 import { getDisplayVersion } from "../../config/versions"
 
@@ -10,7 +10,7 @@ const UI_HTML = `
         <h2>Term Replacer ${getDisplayVersion()}</h2>
         <div class="wtr-replacer-header-controls">
             <div class="wtr-replacer-disable-toggle">
-                <label><input type="checkbox" id="wtr-disable-all"> Disable All</label>
+                <label class="wtr-switch-label wtr-switch-compact"><input type="checkbox" id="wtr-disable-all"><span class="wtr-switch-track"><span></span></span><span>Disable All</span></label>
             </div>
             <button class="wtr-replacer-close-btn">&times;</button>
         </div>
@@ -48,21 +48,33 @@ const UI_HTML = `
         <div id="wtr-tab-add" class="wtr-replacer-tab-content">
             <input type="hidden" id="wtr-term-id">
             <div class="wtr-replacer-form-group">
-                <label for="wtr-original">Original Text</label>
-                <textarea id="wtr-original" rows="1"></textarea>
+                <div class="wtr-field-label-row">
+                    <label for="wtr-original">Original Text <span id="wtr-original-counter" class="wtr-character-counter">0/512</span></label>
+                    <div class="wtr-field-helper-actions">
+                        <button type="button" id="wtr-variation-btn" class="wtr-inline-helper-btn" title="Turn separated text into regex variations"><svg class="icon inline-flex shrink-0 size-4"><use href="#add"></use></svg><span>Variation</span></button>
+                        <button type="button" id="wtr-wildchar-btn" class="wtr-inline-helper-btn" title="Insert a regex wildcard or make selected spaces flexible"><svg class="icon inline-flex shrink-0 size-4"><use href="#add"></use></svg><span>Wild Char</span></button>
+                    </div>
+                </div>
+                <textarea id="wtr-original" rows="1" data-soft-max="512"></textarea>
                 <small id="wtr-regex-disabled-warning" class="wtr-regex-disabled-warning" style="display:none;">This looks like regex syntax, but Use Regex is off. It will be saved as plain text unless you enable Use Regex.</small>
-                <button type="button" id="wtr-refresh-suggestions-btn" class="btn btn-secondary btn-sm wtr-refresh-suggestions-btn">Refresh Suggestions</button>
+                <div class="wtr-original-helper-row">
+                    <small class="wtr-field-hint">Example: from_1|from_2|from_3...</small>
+                    <button type="button" id="wtr-refresh-suggestions-btn" class="wtr-inline-helper-btn">Refresh Suggestions</button>
+                </div>
             </div>
             <div class="wtr-replacer-form-group">
-                <label for="wtr-replacement">Replacement Text</label>
-                <input type="text" id="wtr-replacement">
+                <div class="wtr-field-label-row">
+                    <label for="wtr-replacement">Replacement Text <span id="wtr-replacement-counter" class="wtr-character-counter">0/512</span></label>
+                </div>
+                <input type="text" id="wtr-replacement" data-soft-max="512">
                 <div id="wtr-replacement-suggestions" class="wtr-replacement-suggestions" aria-live="polite"></div>
             </div>
-            <div class="wtr-replacer-form-group">
-                <label><input type="checkbox" id="wtr-case-sensitive"> Case Sensitive</label>
-                <label><input type="checkbox" id="wtr-is-regex"> Use Regex</label>
-                <label><input type="checkbox" id="wtr-whole-word" disabled> Whole Word Only</label>
+            <div class="wtr-replacer-form-group wtr-switch-group">
+                <label class="wtr-switch-label"><input type="checkbox" id="wtr-case-sensitive"><span class="wtr-switch-track"><span></span></span><span>Case Sensitive</span></label>
+                <label class="wtr-switch-label"><input type="checkbox" id="wtr-is-regex"><span class="wtr-switch-track"><span></span></span><span>Use Regex</span></label>
+                <label class="wtr-switch-label"><input type="checkbox" id="wtr-whole-word" disabled><span class="wtr-switch-track"><span></span></span><span>Whole Word Only</span></label>
             </div>
+            <small class="wtr-novel-only-note">This term applies to this novel only.</small>
             <button id="wtr-save-btn" class="btn btn-primary">Save Term</button>
         </div>
         <div id="wtr-tab-io" class="wtr-replacer-tab-content">
@@ -100,19 +112,54 @@ const UI_CSS = `
     .wtr-replacer-ui {
         position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
         width: 90%; max-width: 650px; max-height: 80vh;
-        background-color: var(--bs-body-bg); color: var(--bs-body-color);
-        border: 1px solid var(--bs-border-color); border-radius: var(--bs-border-radius-lg);
-        box-shadow: var(--bs-box-shadow-lg); z-index: 99999;
-        display: none; flex-direction: column; font-family: var(--bs-body-font-family);
+        background-color: var(--bs-body-bg, #ffffff); color: var(--bs-body-color, #111827);
+        border: 1px solid var(--bs-border-color, rgba(17, 24, 39, 0.15)); border-radius: var(--bs-border-radius-lg, 0.75rem);
+        box-shadow: var(--bs-box-shadow-lg, 0 24px 70px rgba(15, 23, 42, 0.24)); z-index: 99999;
+        display: none; flex-direction: column; font-family: var(--bs-body-font-family, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
     }
     .wtr-replacer-ui * { box-sizing: border-box; }
+    .wtr-replacer-ui[data-theme="dark"] {
+        background-color: var(--bs-body-bg, #1f2129);
+        color: var(--bs-body-color, #f8fafc);
+        border-color: var(--bs-border-color, rgba(248, 250, 252, 0.16));
+        box-shadow: var(--bs-box-shadow-lg, 0 24px 70px rgba(0, 0, 0, 0.55));
+    }
+    .wtr-replacer-ui[data-theme="dark"] .wtr-replacer-header,
+    .wtr-replacer-ui[data-theme="dark"] .wtr-replacer-tabs,
+    .wtr-replacer-ui[data-theme="dark"] .wtr-replacer-list-controls {
+        background-color: var(--bs-tertiary-bg, #181a22);
+        border-color: var(--bs-border-color, rgba(248, 250, 252, 0.14));
+    }
+    .wtr-replacer-ui[data-theme="dark"] .wtr-replacer-form-group input[type="text"],
+    .wtr-replacer-ui[data-theme="dark"] .wtr-replacer-form-group textarea,
+    .wtr-replacer-ui[data-theme="dark"] .wtr-replacer-search-bar {
+        background-color: var(--bs-body-bg, #111827);
+        color: var(--bs-body-color, #f8fafc);
+        border-color: var(--bs-border-color, rgba(248, 250, 252, 0.18));
+    }
+    .wtr-replacer-ui[data-theme="dark"] .wtr-replacer-term-item,
+    .wtr-replacer-ui[data-theme="dark"] #wtr-page-indicator {
+        background-color: var(--bs-secondary-bg-subtle, #171923);
+        border-color: var(--bs-border-color, rgba(248, 250, 252, 0.14));
+    }
+    .wtr-replacer-ui[data-theme="dark"] .wtr-inline-helper-btn {
+        background-color: var(--bs-body-bg, #111827);
+        color: var(--bs-body-color, #f8fafc);
+        border-color: var(--bs-border-color, rgba(248, 250, 252, 0.18));
+    }
+    .wtr-replacer-ui[data-theme="dark"] .wtr-inline-helper-btn:hover { background-color: var(--bs-secondary-bg-subtle, #1f2937); }
+    .wtr-replacer-ui[data-theme="dark"] .wtr-switch-track { background: var(--bs-secondary-bg-subtle, #374151); }
+    .wtr-replacer-ui[data-theme="dark"] .wtr-switch-track > span { background: var(--bs-body-bg, #f8fafc); }
+    .wtr-replacer-ui[data-theme="dark"] .wtr-replacer-tab-btn { color: var(--bs-secondary-color, #a7b0c0); }
+    .wtr-replacer-ui[data-theme="dark"] .wtr-replacer-tab-btn.active { color: var(--bs-primary, #8ab4ff); border-bottom-color: var(--bs-primary, #8ab4ff); }
+    .wtr-replacer-ui[data-theme="dark"] .btn { color: var(--bs-body-color, #f8fafc); }
 
     /* --- Header --- */
     .wtr-replacer-header {
-        padding: 0.75rem 1rem; background-color: var(--bs-tertiary-bg);
-        border-bottom: 1px solid var(--bs-border-color);
+        padding: 0.75rem 1rem; background-color: var(--bs-tertiary-bg, #f3f4f6);
+        border-bottom: 1px solid var(--bs-border-color, rgba(17, 24, 39, 0.15));
         display: flex; justify-content: space-between; align-items: center;
-        border-radius: var(--bs-border-radius-lg) var(--bs-border-radius-lg) 0 0;
+        border-radius: var(--bs-border-radius-lg, 0.75rem) var(--bs-border-radius-lg, 0.75rem) 0 0;
     }
     .wtr-replacer-header h2 { margin: 0; font-size: 1.25rem; }
     .wtr-replacer-header-controls { display: flex; align-items: center; gap: 1rem; }
@@ -121,121 +168,206 @@ const UI_CSS = `
     .wtr-replacer-close-btn { background: none; border: none; font-size: 1.5rem; cursor: pointer; line-height: 1; color: inherit; padding: 0; }
 
     /* --- Tabs --- */
-    .wtr-replacer-tabs { display: flex; padding: 0 0.5rem; border-bottom: 1px solid var(--bs-border-color); background-color: var(--bs-tertiary-bg); }
+    .wtr-replacer-tabs { display: flex; padding: 0 0.5rem; border-bottom: 1px solid var(--bs-border-color, rgba(17, 24, 39, 0.15)); background-color: var(--bs-tertiary-bg, #f3f4f6); }
     .wtr-replacer-tab-btn {
         background: none; border: none; padding: 0.75rem 1rem; cursor: pointer;
-        font-size: 0.9rem; color: var(--bs-secondary-color);
+        font-size: 0.9rem; color: var(--bs-secondary-color, #6b7280);
         border-bottom: 3px solid transparent; margin-bottom: -1px;
     }
-    .wtr-replacer-tab-btn.active { color: var(--bs-primary); border-bottom-color: var(--bs-primary); font-weight: bold; }
+    .wtr-replacer-tab-btn.active { color: var(--bs-primary, #2563eb); border-bottom-color: var(--bs-primary, #2563eb); font-weight: bold; }
 
     /* --- Content & Forms --- */
-    .wtr-replacer-content { padding: 1rem; overflow-y: auto; flex-grow: 1; position: relative; }
+    .wtr-replacer-content { padding: 0.75rem; overflow-y: auto; flex-grow: 1; position: relative; }
     .wtr-replacer-tab-content { display: none; }
     .wtr-replacer-tab-content.active { display: block; }
-    .wtr-replacer-form-group { margin-bottom: 1rem; }
-    .wtr-replacer-form-group label { display: block; margin-bottom: 0.5rem; font-weight: bold; font-size: 0.9rem; }
+    .wtr-replacer-form-group { margin-bottom: 0.875rem; }
+    .wtr-replacer-form-group label { display: block; margin-bottom: 0; font-weight: 700; font-size: 0.78rem; }
+    .wtr-field-label-row { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; margin-bottom: 0.45rem; }
+    .wtr-field-label-row label { display: inline-flex; align-items: center; gap: 0.35rem; }
+    .wtr-character-counter { color: var(--bs-secondary-color, #6b7280); font-weight: 600; }
+    .wtr-character-counter.wtr-counter-warning { color: var(--bs-warning, #b45309); }
+    .wtr-character-counter.wtr-counter-danger { color: var(--bs-danger, #dc3545); }
+    .wtr-field-helper-actions, .wtr-original-helper-row { display: flex; align-items: center; gap: 0.375rem; flex-wrap: wrap; }
+    .wtr-original-helper-row { justify-content: space-between; margin-top: 0.35rem; }
+    .wtr-field-hint { color: var(--bs-secondary-color, #6b7280); font-size: 0.72rem; }
+    .wtr-inline-helper-btn {
+        display: inline-flex; align-items: center; justify-content: center; gap: 0.25rem;
+        min-height: 1.5rem; padding: 0 0.5rem; border: 1px solid var(--bs-border-color, rgba(17,24,39,0.15));
+        border-radius: 0.5rem; background: var(--bs-body-bg, #fff); color: var(--bs-body-color, #111827);
+        cursor: pointer; font-size: 0.75rem; font-weight: 700; line-height: 1; transition: background-color .15s ease, color .15s ease, border-color .15s ease;
+    }
+    .wtr-inline-helper-btn:hover { background: var(--bs-secondary-bg-subtle, #f3f4f6); color: var(--bs-body-color, #111827); }
+    .wtr-inline-helper-btn svg { width: 1rem; height: 1rem; }
     .wtr-replacer-form-group input[type="text"], .wtr-replacer-search-bar {
-        width: 100%; padding: 0.5rem 0.75rem;
-        background-color: var(--bs-body-bg); color: var(--bs-body-color);
-        border: 1px solid var(--bs-border-color); border-radius: var(--bs-border-radius);
+        width: 100%; height: 2rem; padding: 0.25rem 0.625rem;
+        background-color: var(--bs-body-bg, #ffffff); color: var(--bs-body-color, #111827);
+        border: 1px solid var(--bs-border-color, rgba(17, 24, 39, 0.15)); border-radius: var(--bs-border-radius, 0.5rem);
     }
     .wtr-replacer-form-group textarea {
-        width: 100%; padding: 0.5rem 0.75rem;
-        background-color: var(--bs-body-bg); color: var(--bs-body-color);
-        border: 1px solid var(--bs-border-color); border-radius: var(--bs-border-radius);
+        width: 100%; padding: 0.375rem 0.625rem;
+        background-color: var(--bs-body-bg, #ffffff); color: var(--bs-body-color, #111827);
+        border: 1px solid var(--bs-border-color, rgba(17, 24, 39, 0.15)); border-radius: var(--bs-border-radius, 0.5rem);
         resize: none;
-        min-height: 2.5rem; max-height: 10rem;
-        line-height: 1.5; font-family: inherit;
+        min-height: 2rem; max-height: 10rem;
+        line-height: 1.4; font-family: inherit;
         word-wrap: break-word; white-space: pre-wrap;
     }
     .wtr-replacer-form-group input[type="checkbox"] { margin-right: 0.5rem; }
+    .wtr-switch-group { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 0.5rem; }
+    .wtr-switch-label { display: inline-flex !important; align-items: center; gap: 0.5rem; width: fit-content; cursor: pointer; font-size: 0.82rem !important; font-weight: 650 !important; }
+    .wtr-switch-label input { position: absolute; opacity: 0; pointer-events: none; }
+    .wtr-switch-track { position: relative; display: inline-flex; align-items: center; width: 2rem; height: 1.15rem; border-radius: 999px; background: var(--bs-secondary-bg-subtle, #d1d5db); transition: background-color .16s ease, opacity .16s ease; }
+    .wtr-switch-track > span { width: 0.95rem; height: 0.95rem; margin-left: 0.1rem; border-radius: 999px; background: var(--bs-body-bg, #fff); box-shadow: 0 1px 3px rgba(15,23,42,0.3); transition: transform .16s ease; }
+    .wtr-switch-label input:checked + .wtr-switch-track { background: var(--bs-primary, #2563eb); }
+    .wtr-switch-label input:checked + .wtr-switch-track > span { transform: translateX(0.84rem); }
+    .wtr-switch-label input:disabled + .wtr-switch-track { opacity: 0.45; }
+    .wtr-switch-compact { margin: 0; }
+    .wtr-novel-only-note { display: block; margin: -0.15rem 0 0.7rem; color: var(--bs-secondary-color, #6b7280); font-size: 0.76rem; }
 
     /* --- Visual Validation States --- */
     .wtr-replacer-form-group .wtr-field-invalid {
-        border-color: var(--bs-danger) !important;
-        background-color: rgba(var(--bs-danger-rgb), 0.1) !important;
-        box-shadow: 0 0 0 0.2rem rgba(var(--bs-danger-rgb), 0.25);
+        border-color: var(--bs-danger, #dc3545) !important;
+        background-color: rgba(var(--bs-danger-rgb, 220, 53, 69), 0.1) !important;
+        box-shadow: 0 0 0 0.2rem rgba(var(--bs-danger-rgb, 220, 53, 69), 0.25);
     }
     
     .wtr-replacer-form-group .wtr-field-valid {
-        border-color: var(--bs-success) !important;
-        background-color: rgba(var(--bs-success-rgb), 0.1) !important;
+        border-color: var(--bs-success, #198754) !important;
+        background-color: rgba(var(--bs-success-rgb, 25, 135, 84), 0.1) !important;
     }
 
     .wtr-replacer-form-group .wtr-field-warning {
-        border-color: var(--bs-warning) !important;
-        background-color: rgba(var(--bs-warning-rgb), 0.12) !important;
-        box-shadow: 0 0 0 0.2rem rgba(var(--bs-warning-rgb), 0.2);
+        border-color: var(--bs-warning, #ffc107) !important;
+        background-color: rgba(var(--bs-warning-rgb, 255, 193, 7), 0.12) !important;
+        box-shadow: 0 0 0 0.2rem rgba(var(--bs-warning-rgb, 255, 193, 7), 0.2);
     }
 
     .wtr-regex-disabled-warning {
         display: block;
         margin-top: 0.35rem;
-        color: var(--bs-warning-text-emphasis, var(--bs-warning));
+        color: var(--bs-warning-text-emphasis, var(--bs-warning, #b45309));
     }
     
     .wtr-save-btn:disabled {
         opacity: 0.6;
         cursor: not-allowed;
-        background-color: var(--bs-secondary);
-        border-color: var(--bs-secondary);
+        background-color: var(--bs-secondary, #6c757d);
+        border-color: var(--bs-secondary, #6c757d);
     }
 
     /* --- Buttons (Scoped to UI) --- */
     .wtr-replacer-ui .btn {
-        display: inline-block; font-weight: 400; line-height: 1.5; color: var(--bs-body-color);
+        display: inline-block; font-weight: 400; line-height: 1.5; color: var(--bs-body-color, #111827);
         text-align: center; vertical-align: middle; cursor: pointer; user-select: none;
         background-color: transparent; border: 1px solid transparent;
-        padding: 0.375rem 0.75rem; font-size: 1rem; border-radius: var(--bs-border-radius);
+        padding: 0.375rem 0.75rem; font-size: 1rem; border-radius: var(--bs-border-radius, 0.5rem);
         transition: color .15s ease-in-out,background-color .15s ease-in-out,border-color .15s ease-in-out,box-shadow .15s ease-in-out;
     }
     .wtr-replacer-ui .btn:disabled { opacity: 0.65; cursor: not-allowed; }
-    .wtr-replacer-ui .btn-primary { color: #fff; background-color: var(--bs-primary); border-color: var(--bs-primary); }
-    .wtr-replacer-ui .btn-secondary { color: #fff; background-color: var(--bs-secondary); border-color: var(--bs-secondary); }
-    .wtr-replacer-ui .btn-success { color: #fff; background-color: var(--bs-success); border-color: var(--bs-success); }
-    .wtr-replacer-ui .btn-warning { color: #000; background-color: var(--bs-warning); border-color: var(--bs-warning); }
-    .wtr-replacer-ui .btn-info { color: #fff; background-color: var(--bs-info); border-color: var(--bs-info); }
+    .wtr-replacer-ui .btn-primary { color: #fff; background-color: var(--bs-primary, #2563eb); border-color: var(--bs-primary, #2563eb); }
+    .wtr-replacer-ui .btn-secondary { color: #fff; background-color: var(--bs-secondary, #6c757d); border-color: var(--bs-secondary, #6c757d); }
+    .wtr-replacer-ui .btn-success { color: #fff; background-color: var(--bs-success, #198754); border-color: var(--bs-success, #198754); }
+    .wtr-replacer-ui .btn-warning { color: #000; background-color: var(--bs-warning, #ffc107); border-color: var(--bs-warning, #ffc107); }
+    .wtr-replacer-ui .btn-info { color: #fff; background-color: var(--bs-info, #0dcaf0); border-color: var(--bs-info, #0dcaf0); }
     .wtr-replacer-ui .btn-sm { padding: 0.25rem 0.5rem; font-size: 0.875rem; }
 
     .wtr-refresh-suggestions-btn { margin-top: 0.35rem; }
     .wtr-replacement-suggestions { margin-top: 0.35rem; }
-    .wtr-replacement-suggestion-buttons { display: flex; gap: 0.35rem; flex-wrap: wrap; margin-top: 0.35rem; }
-    .wtr-replacement-suggestion-btn { display: inline-flex !important; align-items: center; gap: 0.35rem; }
-    .wtr-replacement-suggestion-btn.wtr-suggestion-existing {
-        background-color: var(--bs-success) !important;
-        border-color: var(--bs-success) !important;
-        color: #fff !important;
+    .wtr-replacement-suggestion-buttons { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.35rem; }
+    .wtr-replacement-suggestion-btn {
+        display: inline-flex !important; align-items: center; min-height: 1.25rem;
+        padding: 0; border-radius: 0.25rem; border: 1px solid rgba(21, 128, 61, 0.5);
+        overflow: hidden; cursor: pointer; font-size: 0.75rem; font-weight: 600; line-height: 1;
+        background-color: #16a34a; color: #fff; transition: background-color .15s ease, border-color .15s ease, transform .15s ease;
     }
-    .wtr-replacement-suggestion-source { opacity: 0.85; font-size: 0.72rem; }
+    .wtr-replacement-suggestion-btn:hover { background-color: #22c55e; transform: translateY(-1px); }
+    .wtr-suggestion-icon-segment {
+        display: inline-flex; align-items: center; align-self: stretch; gap: 0.125rem;
+        padding: 0 0.25rem; border-right: 1px solid rgba(255,255,255,0.25);
+        background-color: #111827; color: #fff;
+    }
+    .wtr-suggestion-icon-segment svg { width: 1rem; height: 1rem; }
+    .wtr-suggestion-label { padding: 0 0.375rem; }
+    .wtr-suggestion-google { background-color: #4285f4; border-color: transparent; }
+    .wtr-suggestion-google:hover { background-color: #5b9bff; }
+    .wtr-suggestion-source { background-color: #374151; border-color: rgba(0,0,0,0.25); }
+    .wtr-suggestion-source:hover { background-color: #4b5563; }
+    .wtr-suggestion-field { background-color: #4f46e5; border-color: rgba(79,70,229,0.65); }
+    .wtr-suggestion-field:hover { background-color: #6366f1; }
+    .wtr-replacement-suggestion-btn.wtr-suggestion-existing { box-shadow: inset 0 0 0 1px rgba(255,255,255,0.38); }
     .wtr-replacer-popover-actions { display: flex; flex-direction: column; gap: 0.25rem; }
-    .wtr-replacer-popover-add-btn { white-space: nowrap; }
+    .wtr-replacer-popover-add-btn { white-space: nowrap; margin-top: 0.25rem !important; }
+
+    /* --- Existing Term Modal --- */
+    .wtr-existing-term-modal {
+        position: fixed; inset: 0; z-index: 100002; display: flex; align-items: center; justify-content: center;
+        background: rgba(15, 23, 42, 0.45); padding: 1rem;
+    }
+    .wtr-existing-term-card {
+        width: min(92vw, 460px); background: var(--bs-body-bg, #fff); color: var(--bs-body-color, #111827);
+        border: 1px solid var(--bs-border-color, rgba(17,24,39,0.16)); border-radius: 0.75rem;
+        box-shadow: 0 24px 70px rgba(0,0,0,0.32); overflow: hidden;
+    }
+    .wtr-existing-term-header { padding: 0.8rem 1rem; border-bottom: 1px solid var(--bs-border-color, rgba(17,24,39,0.12)); font-weight: 800; }
+    .wtr-existing-term-body { padding: 1rem; display: flex; flex-direction: column; gap: 0.75rem; }
+    .wtr-existing-term-body p { margin: 0; font-size: 0.9rem; }
+    .wtr-existing-term-list { display: flex; flex-direction: column; gap: 0.45rem; }
+    .wtr-existing-term-open-btn {
+        width: 100%; text-align: left; padding: 0.6rem 0.7rem; border: 1px solid var(--bs-border-color, rgba(17,24,39,0.14));
+        border-radius: 0.5rem; background: var(--bs-secondary-bg-subtle, #f3f4f6); color: inherit; cursor: pointer;
+    }
+    .wtr-existing-term-open-btn:hover { background: var(--bs-tertiary-bg, #e5e7eb); }
+    .wtr-existing-term-actions { display: flex; justify-content: flex-end; gap: 0.5rem; padding: 0.75rem 1rem; border-top: 1px solid var(--bs-border-color, rgba(17,24,39,0.12)); }
+    .wtr-existing-term-actions button {
+        display: inline-flex; align-items: center; justify-content: center; min-height: 1.75rem; padding: 0 0.65rem;
+        border-radius: 0.5rem; border: 1px solid transparent; cursor: pointer; font-size: 0.8rem; font-weight: 700;
+    }
+    .wtr-existing-term-actions .btn-secondary { background: var(--bs-secondary, #6b7280); color: #fff; }
+    .wtr-existing-term-actions .btn-primary { background: var(--bs-primary, #2563eb); color: #fff; }
+    .wtr-replacer-ui[data-theme="dark"] ~ .wtr-existing-term-modal .wtr-existing-term-card,
+    html.dark .wtr-existing-term-card,
+    body.dark .wtr-existing-term-card { background: #1f2129; color: #f8fafc; border-color: rgba(248,250,252,0.16); }
+    .wtr-replacer-ui[data-theme="dark"] ~ .wtr-existing-term-modal .wtr-existing-term-open-btn,
+    html.dark .wtr-existing-term-open-btn,
+    body.dark .wtr-existing-term-open-btn { background: #111827; border-color: rgba(248,250,252,0.16); }
 
     /* --- Term List --- */
     .wtr-replacer-list-controls {
         display: flex; justify-content: space-between; align-items: center;
         gap: 0.75rem; position: sticky; top: -1rem;
-        background-color: var(--bs-body-bg); padding: 0.75rem 0; z-index: 10;
+        background-color: var(--bs-body-bg, #ffffff); padding: 0.75rem 0; z-index: 10;
         flex-wrap: wrap;
     }
     .wtr-replacer-term-list { list-style: none; padding: 0; margin: 0; }
     .wtr-replacer-term-item {
-        padding: 0.75rem; border: 1px solid var(--bs-border-color);
-        border-radius: var(--bs-border-radius); margin-bottom: 0.5rem;
+        padding: 0.75rem; border: 1px solid var(--bs-border-color, rgba(17, 24, 39, 0.15));
+        border-radius: var(--bs-border-radius, 0.5rem); margin-bottom: 0.5rem;
         display: flex; align-items: center; gap: 0.75rem;
-        background-color: var(--bs-secondary-bg-subtle);
+        background-color: var(--bs-secondary-bg-subtle, #f3f4f6);
     }
     .wtr-replacer-term-details { flex-grow: 1; overflow: hidden; }
-    .wtr-replacer-term-text { font-family: var(--bs-font-monospace); font-size: 0.9rem; word-wrap: break-word; }
-    .wtr-term-original { color: var(--bs-danger) !important; font-weight: bold; }
-    .wtr-term-replacement { color: var(--bs-success) !important; font-weight: bold; }
+    .wtr-replacer-term-text { font-family: var(--bs-font-monospace, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace); font-size: 0.9rem; word-wrap: break-word; }
+    .wtr-term-original { color: var(--bs-danger, #dc3545) !important; font-weight: bold; }
+    .wtr-term-replacement { color: var(--bs-success, #198754) !important; font-weight: bold; }
 
     /* --- Floating Button --- */
     .wtr-add-term-float-btn {
-        position: fixed; bottom: 20px; right: 20px;
-        background-color: var(--bs-primary); color: white;
-        padding: 0.75rem 1.25rem; border-radius: 50rem; border: none;
-        box-shadow: var(--bs-box-shadow); cursor: pointer; font-size: 1rem; z-index: 99998; display: none;
+        position: fixed; bottom: 7.25rem; right: 1rem;
+        display: none; align-items: center; justify-content: center; gap: 0.5rem;
+        min-height: 2rem; padding: 0.625rem 1.25rem;
+        background-color: var(--bs-body-bg, #ffffff); color: #d97706;
+        border: 1px solid #d97706; border-radius: 0.375rem;
+        box-shadow: var(--bs-box-shadow, 0 10px 25px rgba(15, 23, 42, 0.18));
+        cursor: pointer; font-size: 0.875rem; font-weight: 600; line-height: 1;
+        z-index: 99998; transition: box-shadow .2s ease, transform .2s ease, background-color .2s ease;
+    }
+    .wtr-add-term-float-btn:hover { background-color: rgba(217, 119, 6, 0.1); box-shadow: 0 12px 30px rgba(15, 23, 42, 0.24); }
+    .wtr-add-term-float-btn svg { width: 1rem; height: 1rem; flex-shrink: 0; }
+    .wtr-replacer-ui[data-theme="dark"] ~ .wtr-add-term-float-btn,
+    html.dark .wtr-add-term-float-btn,
+    body.dark .wtr-add-term-float-btn {
+        background-color: #1f2129; color: #f59e0b; border-color: #f59e0b;
+        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4);
     }
 
     /* --- Overlays & Loaders --- */
@@ -247,7 +379,7 @@ const UI_CSS = `
     }
     .wtr-ui-loader {
         display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-        background: rgba(var(--bs-body-bg-rgb), 0.7); color: var(--bs-body-color);
+        background: rgba(var(--bs-body-bg-rgb, 255, 255, 255), 0.7); color: var(--bs-body-color, #111827);
         justify-content: center; align-items: center; z-index: 20;
     }
 
@@ -263,13 +395,13 @@ const UI_CSS = `
     }
     #wtr-page-indicator {
         white-space: nowrap; margin: 0 0.5rem; font-size: 0.875rem;
-        padding: 0.25rem 0.5rem; background-color: var(--bs-secondary-bg-subtle);
-        border-radius: var(--bs-border-radius);
+        padding: 0.25rem 0.5rem; background-color: var(--bs-secondary-bg-subtle, #f3f4f6);
+        border-radius: var(--bs-border-radius, 0.5rem);
     }
 
     /* --- Enhanced Export Button Styling --- */
     .wtr-export-combined {
-        background: linear-gradient(45deg, var(--bs-success), #28a745);
+        background: linear-gradient(45deg, var(--bs-success, #198754), #28a745);
         border: none;
         color: white;
         font-weight: bold;
@@ -278,7 +410,7 @@ const UI_CSS = `
     }
 
     .wtr-export-combined:hover {
-        background: linear-gradient(45deg, #28a745, var(--bs-success));
+        background: linear-gradient(45deg, #28a745, var(--bs-success, #198754));
         transform: translateY(-1px);
         box-shadow: 0 4px 8px rgba(0,0,0,0.2);
     }
@@ -365,6 +497,189 @@ const UI_CSS = `
     }
 `
 
+function parseRgbColor(value: string | null | undefined): number[] | null {
+	const match = value?.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/i)
+	return match ? [Number(match[1]), Number(match[2]), Number(match[3])] : null
+}
+
+function isDarkRgb(value: string | null | undefined): boolean {
+	const rgb = parseRgbColor(value)
+	if (!rgb) {
+		return false
+	}
+	const [r, g, b] = rgb
+	return (0.2126 * r + 0.7152 * g + 0.0722 * b) < 128
+}
+
+function hasPressedDarkThemeControl(): boolean {
+	const pressedControls = Array.from(document.querySelectorAll('[aria-pressed="true"], [data-pressed]'))
+	const hasDarkPressed = pressedControls.some((control) => normalizeMenuText(control) === "Dark")
+	const hasLightPressed = pressedControls.some((control) => normalizeMenuText(control) === "Light")
+	if (hasDarkPressed) {
+		return true
+	}
+	if (hasLightPressed) {
+		return false
+	}
+	return false
+}
+
+function hasDarkReaderThemeSample(): boolean {
+	const selectedSamples = Array.from(document.querySelectorAll('button[style*="background-color"]')).filter((button) => {
+		const text = normalizeMenuText(button)
+		const className = typeof button.className === "string" ? button.className : button.getAttribute("class") || ""
+		return text.includes('"Aa"') && /ring-primary|data-\[state=on\]|aria-pressed/.test(className)
+	}) as HTMLElement[]
+	return selectedSamples.some((button) => isDarkRgb(button.style.backgroundColor || getComputedStyle(button).backgroundColor))
+}
+
+function isWtrDarkModeActive(): boolean {
+	if (document.documentElement.classList.contains("dark") || document.body.classList.contains("dark")) {
+		return true
+	}
+	if (hasPressedDarkThemeControl() || hasDarkReaderThemeSample()) {
+		return true
+	}
+	const pageBg = getComputedStyle(document.body).backgroundColor || getComputedStyle(document.documentElement).backgroundColor
+	return isDarkRgb(pageBg) || window.matchMedia?.("(prefers-color-scheme: dark)")?.matches === true
+}
+
+export function syncUITheme() {
+	const uiContainer = document.querySelector(".wtr-replacer-ui") as HTMLElement | null
+	if (!uiContainer) {
+		return
+	}
+	uiContainer.dataset.theme = isWtrDarkModeActive() ? "dark" : "light"
+}
+
+function findNativeFloatingAddTermButton(): HTMLButtonElement | null {
+	return (
+		Array.from(document.querySelectorAll("button")).find(
+			(button) => normalizeMenuText(button) === "Add Term" && !button.classList.contains("wtr-add-term-float-btn"),
+		) || null
+	)
+}
+
+export function syncFloatingAddTermButtonPosition() {
+	const floatBtn = document.querySelector(".wtr-add-term-float-btn") as HTMLElement | null
+	if (!floatBtn) {
+		return
+	}
+	const nativeButton = findNativeFloatingAddTermButton()
+	const nativeContainer = nativeButton?.closest(".fixed") as HTMLElement | null
+	const anchor = nativeContainer || nativeButton
+	const rect = anchor?.getBoundingClientRect()
+	if (rect && rect.width > 0 && rect.height > 0) {
+		const gap = 8
+		floatBtn.style.right = `${Math.max(12, Math.round(window.innerWidth - rect.right))}px`
+		floatBtn.style.bottom = `${Math.max(20, Math.round(window.innerHeight - rect.top + gap))}px`
+		return
+	}
+	floatBtn.style.right = "1rem"
+	floatBtn.style.bottom = window.innerWidth <= 640 ? "11rem" : "7.25rem"
+}
+
+function getTextInputSoftMax(input: HTMLInputElement | HTMLTextAreaElement | null): number {
+	return Number(input?.dataset?.softMax) || 512
+}
+
+function updateCharacterCounter(input: HTMLInputElement | HTMLTextAreaElement | null, counter: Element | null) {
+	if (!input || !counter) {
+		return
+	}
+	const max = getTextInputSoftMax(input)
+	const length = input.value.length
+	counter.textContent = `${length}/${max}`
+	counter.classList.toggle("wtr-counter-warning", length > max * 0.8 && length <= max)
+	counter.classList.toggle("wtr-counter-danger", length > max)
+}
+
+function splitVariationParts(value: string): string[] {
+	const parts = value
+		.split(/\s*(?:\||\/|,|;|\n)\s*/)
+		.map((part) => part.trim())
+		.filter(Boolean)
+	const deduped = new Map<string, string>()
+	parts.forEach((part) => deduped.set(part.toLocaleLowerCase(), part))
+	return Array.from(deduped.values()).sort((a, b) => b.length - a.length || a.localeCompare(b))
+}
+
+function replaceInputRange(input: HTMLInputElement | HTMLTextAreaElement, replacement: string) {
+	const start = input.selectionStart ?? input.value.length
+	const end = input.selectionEnd ?? start
+	input.value = `${input.value.slice(0, start)}${replacement}${input.value.slice(end)}`
+	const cursor = start + replacement.length
+	input.setSelectionRange(cursor, cursor)
+	input.dispatchEvent(new Event("input", { bubbles: true }))
+	input.focus()
+}
+
+function normalizeOriginalAsVariations(originalInput: HTMLTextAreaElement, regexCheckbox: HTMLInputElement) {
+	const selectedText = originalInput.selectionStart !== null && originalInput.selectionEnd !== null && originalInput.selectionEnd > originalInput.selectionStart
+		? originalInput.value.slice(originalInput.selectionStart, originalInput.selectionEnd)
+		: ""
+	const sourceText = selectedText || originalInput.value
+	const parts = splitVariationParts(sourceText)
+	if (parts.length === 0) {
+		return
+	}
+	const normalized = parts.map((part) => escapeRegExp(part)).join("|")
+	regexCheckbox.checked = true
+	if (selectedText) {
+		replaceInputRange(originalInput, normalized)
+	} else {
+		originalInput.value = normalized
+		originalInput.dispatchEvent(new Event("input", { bubbles: true }))
+		originalInput.focus()
+	}
+	disableWholeWordForRegex()
+}
+
+function insertWildChar(originalInput: HTMLTextAreaElement, regexCheckbox: HTMLInputElement) {
+	const start = originalInput.selectionStart ?? originalInput.value.length
+	const end = originalInput.selectionEnd ?? start
+	const selectedText = end > start ? originalInput.value.slice(start, end) : ""
+	const wildcard = selectedText
+		? escapeRegExp(selectedText.trim()).replace(/\\\s\+/g, "\\s+").replace(/\s+/g, "\\s+")
+		: ".*?"
+	regexCheckbox.checked = true
+	replaceInputRange(originalInput, wildcard)
+	disableWholeWordForRegex()
+}
+
+function disableWholeWordForRegex() {
+	const wholeWordCheckbox = document.getElementById("wtr-whole-word") as HTMLInputElement | null
+	if (wholeWordCheckbox) {
+		wholeWordCheckbox.checked = false
+		wholeWordCheckbox.disabled = true
+	}
+}
+
+function setupReaderControlHardening() {
+	let syncTimeout: ReturnType<typeof setTimeout> | null = null
+	const scheduleSync = () => {
+		if (syncTimeout) {
+			clearTimeout(syncTimeout)
+		}
+		syncTimeout = setTimeout(() => {
+			syncUITheme()
+			addMenuButton()
+			syncFloatingAddTermButtonPosition()
+		}, 100)
+	}
+
+	const observer = new MutationObserver(scheduleSync)
+	observer.observe(document.body, {
+		childList: true,
+		subtree: true,
+		attributes: true,
+		attributeFilter: ["class", "style", "aria-pressed", "data-pressed"],
+	})
+	document.addEventListener("click", scheduleSync, true)
+	window.addEventListener("resize", scheduleSync)
+	scheduleSync()
+}
+
 export function createUI() {
 	if (document.querySelector(".wtr-replacer-ui")) {
 		return
@@ -375,6 +690,7 @@ export function createUI() {
 	uiContainer.className = "wtr-replacer-ui"
 	uiContainer.innerHTML = UI_HTML
 	document.body.appendChild(uiContainer)
+	syncUITheme()
 
 	const processingOverlay = document.createElement("div")
 	processingOverlay.className = "wtr-processing-overlay"
@@ -422,6 +738,7 @@ export function createUI() {
 	})
 	wtrPopoverObserver.observe(document.body, { childList: true, subtree: true })
 	Handlers.enhanceWtrTermPopovers(document)
+	setupReaderControlHardening()
 
 	// Add scroll event listener to save term list location
 	const contentArea = uiContainer.querySelector(".wtr-replacer-content")
@@ -438,9 +755,9 @@ export function createUI() {
 	}
 
 	// Character-based auto-resize for original text field
-	const regexCheckbox = uiContainer.querySelector("#wtr-is-regex")
-	const caseSensitiveCheckbox = uiContainer.querySelector("#wtr-case-sensitive")
-	const wholeWordCheckbox = uiContainer.querySelector("#wtr-whole-word")
+	const regexCheckbox = uiContainer.querySelector("#wtr-is-regex") as HTMLInputElement
+	const caseSensitiveCheckbox = uiContainer.querySelector("#wtr-case-sensitive") as HTMLInputElement
+	const wholeWordCheckbox = uiContainer.querySelector("#wtr-whole-word") as HTMLInputElement
 	regexCheckbox.addEventListener("change", (e) => {
 		wholeWordCheckbox.disabled = e.target.checked
 		if (e.target.checked) {
@@ -449,7 +766,7 @@ export function createUI() {
 		}
 	})
 
-	const originalTextarea = uiContainer.querySelector("#wtr-original")
+	const originalTextarea = uiContainer.querySelector("#wtr-original") as HTMLTextAreaElement
 	function autoResizeTextarea() {
 		if (!originalTextarea) {
 			return
@@ -472,8 +789,18 @@ export function createUI() {
 
 	// Real-time regex validation system
 	const saveButton = uiContainer.querySelector("#wtr-save-btn")
-	const replacementInput = uiContainer.querySelector("#wtr-replacement")
+	const replacementInput = uiContainer.querySelector("#wtr-replacement") as HTMLInputElement
+	const originalCounter = uiContainer.querySelector("#wtr-original-counter")
+	const replacementCounter = uiContainer.querySelector("#wtr-replacement-counter")
+	const updateAllCharacterCounters = () => {
+		updateCharacterCounter(originalTextarea, originalCounter)
+		updateCharacterCounter(replacementInput, replacementCounter)
+	}
 	replacementInput.addEventListener("focus", Handlers.handleSuggestionTargetFocus)
+	replacementInput.addEventListener("input", updateAllCharacterCounters)
+	originalTextarea.addEventListener("input", updateAllCharacterCounters)
+	uiContainer.querySelector("#wtr-variation-btn").addEventListener("click", () => normalizeOriginalAsVariations(originalTextarea, regexCheckbox))
+	uiContainer.querySelector("#wtr-wildchar-btn").addEventListener("click", () => insertWildChar(originalTextarea, regexCheckbox))
 
 	function updateValidationVisual(state) {
 		// Remove all validation classes
@@ -530,12 +857,16 @@ export function createUI() {
 
 	// Initial validation state
 	validateAndUpdateUI()
+	updateAllCharacterCounters()
 
 	// Create floating action button
 	const addTermFloatBtn = document.createElement("button")
+	addTermFloatBtn.type = "button"
 	addTermFloatBtn.className = "wtr-add-term-float-btn"
-	addTermFloatBtn.textContent = "Add Term"
+	addTermFloatBtn.title = "Add selected text to WTR Term Replacer"
+	addTermFloatBtn.innerHTML = '<svg class="icon inline-flex shrink-0 size-4"><use href="#edit"></use></svg><span>Replacer Term</span>'
 	document.body.appendChild(addTermFloatBtn)
+	syncFloatingAddTermButtonPosition()
 	addTermFloatBtn.addEventListener("click", Handlers.handleAddTermFromSelection)
 	document.addEventListener("mouseup", Handlers.handleTextSelection)
 	document.addEventListener("touchend", Handlers.handleTextSelection)
@@ -750,6 +1081,7 @@ export function renderTermList(filter = "") {
 }
 
 export function showUIPanel() {
+	syncUITheme()
 	const ui = document.querySelector(".wtr-replacer-ui")
 	ui.style.display = "flex"
 	document.getElementById("wtr-disable-all").checked = state.settings.isDisabled
@@ -776,6 +1108,15 @@ export function clearTermList() {
 	}
 }
 
+function dispatchUiOnlyInput(element: Element | null) {
+	if (!element) {
+		return
+	}
+	const event = new Event("input", { bubbles: true })
+	;(event as any).wtrSkipSuggestions = true
+	element.dispatchEvent(event)
+}
+
 export function showFormView(term = null) {
 	if (!term) {
 		Handlers.clearDiscoveryFormState()
@@ -788,6 +1129,8 @@ export function showFormView(term = null) {
 	document.getElementById("wtr-whole-word").checked = term ? term.wholeWord : false
 	document.getElementById("wtr-whole-word").disabled = term ? term.isRegex : false
 	document.getElementById("wtr-save-btn").textContent = term ? "Update Term" : "Save Term"
+	dispatchUiOnlyInput(document.getElementById("wtr-original"))
+	dispatchUiOnlyInput(document.getElementById("wtr-replacement"))
 	switchTab("add")
 
 	// Initialize auto-resize after form is populated
@@ -803,8 +1146,7 @@ export function showFormView(term = null) {
 		// Re-initialize validation state for the form
 		const regexCheckbox = document.getElementById("wtr-is-regex")
 		if (regexCheckbox) {
-			const validationEvent = new Event("input", { bubbles: true })
-			originalTextarea.dispatchEvent(validationEvent)
+			dispatchUiOnlyInput(originalTextarea)
 		}
 	}, 10)
 }
@@ -818,7 +1160,8 @@ function createSimpleMenuButton(options) {
 	const { text = "Settings", onClick = null, className = "", tooltip = "" } = options
 
 	const button = document.createElement("button")
-	button.className = `replacer-settings-btn ${className}`
+	button.type = "button"
+	button.className = `replacer-settings-btn ${className}`.trim()
 	if (tooltip) {
 		button.title = tooltip
 	}
@@ -829,7 +1172,7 @@ function createSimpleMenuButton(options) {
 	svg.setAttribute("height", "24px")
 	svg.setAttribute("viewBox", "0 -960 960 960")
 	svg.setAttribute("width", "24px")
-	svg.setAttribute("fill", "#1f1f1f")
+	svg.setAttribute("fill", "currentColor")
 	svg.style.marginRight = "4px"
 	svg.style.verticalAlign = "middle"
 	svg.innerHTML =
@@ -850,60 +1193,110 @@ function createSimpleMenuButton(options) {
 	return button
 }
 
+function normalizeMenuText(element) {
+	return (element?.textContent || "").replace(/\s+/g, " ").trim()
+}
+
+function findMenuButtonTargets() {
+	const targets: Array<{ container: Element; originalButton: HTMLButtonElement; layout: "legacy" | "new-grid" }> = []
+	const legacyButton = document.querySelector("button.term-edit-btn:not(.replacer-settings-btn)") as HTMLButtonElement | null
+	const legacyContainer = legacyButton?.closest("div.col-6, [role='group'], .btn-group")
+	if (legacyButton && legacyContainer) {
+		targets.push({ container: legacyContainer, originalButton: legacyButton, layout: "legacy" })
+	}
+
+	const newEditButtons = Array.from(document.querySelectorAll("button")).filter(
+		(button) => normalizeMenuText(button) === "Edit Terms" && !button.classList.contains("replacer-settings-btn"),
+	)
+	newEditButtons.forEach((button) => {
+		const container = button.closest(".grid, [data-slot='tabs-content'], .chapter-wrap, .chapter-tracker")
+		if (container && !targets.some((target) => target.container === container)) {
+			targets.push({ container, originalButton: button, layout: "new-grid" })
+		}
+	})
+
+	return targets
+}
+
 export function addMenuButton() {
-	const container = document.querySelector("div.col-6:has(button.term-edit-btn)")
-	if (!container || state.observedMenuContainers.has(container)) {
+	const targets = findMenuButtonTargets()
+	if (targets.length === 0) {
 		return
 	}
 
-	const ensureButtonState = () => {
-		let settingsButton = container.querySelector(".replacer-settings-btn")
-		const originalButton = container.querySelector(".term-edit-btn:not(.replacer-settings-btn)")
-
-		// 1. Create the button if it doesn't exist
-		if (!settingsButton) {
-			if (!originalButton) {
-				return
-			} // Can't create if the original doesn't exist yet
-
-			// Create button with simple inline SVG icon
-			settingsButton = createSimpleMenuButton({
-				text: "Term Settings",
-				onClick: showUIPanel,
-				className: originalButton.className, // Copy classes for styling
-				tooltip: "Open WTR Term Settings",
-			})
-
-			container.appendChild(settingsButton)
-			log(state.globalSettings, "WTR Term Replacer: Settings button created with simple icon system.")
+	targets.forEach(({ container, originalButton, layout }) => {
+		if (!container || state.observedMenuContainers.has(container)) {
+			return
 		}
 
-		// 2. Enforce the correct order (our button should be last)
-		if (container.lastChild !== settingsButton) {
-			container.appendChild(settingsButton)
-			log(state.globalSettings, "WTR Term Replacer: Settings button order corrected.")
+		const findOriginalButton = () => {
+			if (layout === "legacy") {
+				return container.querySelector(".term-edit-btn:not(.replacer-settings-btn)") || originalButton
+			}
+			return (
+				Array.from(container.querySelectorAll("button")).find(
+					(button) => normalizeMenuText(button) === "Edit Terms" && !button.classList.contains("replacer-settings-btn"),
+				) || originalButton
+			)
 		}
 
-		// 3. Apply consistent styling
-		if (originalButton && settingsButton) {
-			const desiredFlexStyle = "1 1 0%"
-			container.style.display = "flex"
-			container.style.gap = "5px"
-			originalButton.style.flex = desiredFlexStyle
-			settingsButton.style.flex = desiredFlexStyle
+		const ensureButtonState = () => {
+			let settingsButton = container.querySelector(".replacer-settings-btn")
+			const currentOriginalButton = findOriginalButton()
+
+			// 1. Create the button if it doesn't exist
+			if (!settingsButton) {
+				if (!currentOriginalButton) {
+					return
+				} // Can't create if the original doesn't exist yet
+
+				// Create button with simple inline SVG icon
+				settingsButton = createSimpleMenuButton({
+					text: "Term Settings",
+					onClick: showUIPanel,
+					className: currentOriginalButton.className, // Copy classes for styling
+					tooltip: "Open WTR Term Settings",
+				})
+				settingsButton.setAttribute("data-wtr-replacer-menu", layout)
+
+				container.appendChild(settingsButton)
+				log(state.globalSettings, "WTR Term Replacer: Settings button created with simple icon system.")
+			}
+
+			// 2. Enforce the correct order (our button should be last)
+			if (container.lastChild !== settingsButton) {
+				container.appendChild(settingsButton)
+				log(state.globalSettings, "WTR Term Replacer: Settings button order corrected.")
+			}
+
+			// 3. Apply consistent styling without overriding the new grid layout.
+			if (currentOriginalButton && settingsButton) {
+				if (layout === "legacy") {
+					const desiredFlexStyle = "1 1 0%"
+					container.style.display = "flex"
+					container.style.gap = "5px"
+					currentOriginalButton.style.flex = desiredFlexStyle
+					settingsButton.style.flex = desiredFlexStyle
+				} else {
+					settingsButton.style.width = "100%"
+					if (container.classList.contains("grid")) {
+						settingsButton.style.gridColumn = "span 2 / span 2"
+					}
+				}
+			}
 		}
-	}
 
-	// Run once immediately
-	ensureButtonState()
-
-	// Observe for any changes and re-run to correct the state
-	const observer = new MutationObserver(() => {
-		log(state.globalSettings, "WTR Term Replacer: Detected change in menu container, ensuring button state.")
+		// Run once immediately
 		ensureButtonState()
-	})
-	observer.observe(container, { childList: true })
 
-	// Mark this container as observed to prevent re-attaching observers
-	state.observedMenuContainers.add(container)
+		// Observe for any changes and re-run to correct the state
+		const observer = new MutationObserver(() => {
+			log(state.globalSettings, "WTR Term Replacer: Detected change in menu container, ensuring button state.")
+			ensureButtonState()
+		})
+		observer.observe(container, { childList: true })
+
+		// Mark this container as observed to prevent re-attaching observers
+		state.observedMenuContainers.add(container)
+	})
 }

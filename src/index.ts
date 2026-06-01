@@ -4,13 +4,7 @@ import { getTermsForSlug, loadData, loadGlobalSettings } from "./modules/storage
 import { waitForInitialContent } from "./modules/observer"
 import { setNovelSlug, state } from "./modules/state"
 import * as Handlers from "./modules/handlers" // Import all handlers
-import { getNovelSlug, log } from "./modules/utils"
-
-// Function to get chapter ID from URL (for module compatibility)
-function getChapterIdFromUrl(url) {
-	const match = url.match(/(chapter-\d+)/)
-	return match ? match[1] : null
-}
+import { findChapterBodyForUrl, getChapterIdFromUrl, log, getNovelSlug } from "./modules/utils"
 
 // Enhanced error handling setup
 function setupEnhancedErrorHandling() {
@@ -104,8 +98,7 @@ function addDisableAllRobustness() {
 			return
 		}
 
-		const chapterSelector = `#${chapterId} .chapter-body`
-		const chapterBody = document.querySelector(chapterSelector)
+		const chapterBody = findChapterBodyForUrl(document)
 
 		if (chapterBody) {
 			try {
@@ -242,14 +235,14 @@ async function main() {
 	log(state.globalSettings, "WTR Term Replacer: Setting up error handling...")
 	setupEnhancedErrorHandling()
 
-	log(state.globalSettings, "WTR Term Replacer: Setting up disable functionality...")
-	addDisableAllRobustness()
-
 	log(state.globalSettings, "WTR Term Replacer: Setting up navigation handling...")
 	setupEnhancedNavigationHandling()
 
 	log(state.globalSettings, "WTR Term Replacer: Creating UI and menu commands...")
 	createUI() // This will also set up the initial event listeners
+
+	log(state.globalSettings, "WTR Term Replacer: Setting up disable functionality...")
+	addDisableAllRobustness()
 
 	log(state.globalSettings, "WTR Term Replacer: Registering menu commands...")
 	GM_registerMenuCommand("Term Replacer Settings", showUIPanel)

@@ -1,8 +1,7 @@
 // Core replacement engine for WTR Lab Term Replacer
 import { state } from "./state"
-import { escapeRegExp, getChapterIdFromUrl, log } from "./utils"
+import { escapeRegExp, findChapterBodyById, findChapterBodyForUrl, getChapterIdFromUrl, log } from "./utils"
 import { showProcessingIndicator } from "./ui"
-import { CHAPTER_BODY_SELECTOR } from "./config"
 
 export async function performReplacements(targetElement) {
 	if (!targetElement) {
@@ -58,8 +57,7 @@ async function performReplacementsWithRetry(targetElement, maxRetries) {
 				// Re-acquire element reference for better stability
 				const chapterId = getChapterIdFromUrl(window.location.href)
 				if (chapterId) {
-					const chapterSelector = `#${chapterId} ${CHAPTER_BODY_SELECTOR}`
-					targetElement = document.querySelector(chapterSelector)
+					targetElement = findChapterBodyById(chapterId) || findChapterBodyForUrl(document)
 					if (!targetElement) {
 						log(
 							state.globalSettings,

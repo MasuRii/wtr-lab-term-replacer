@@ -2,7 +2,14 @@
 import { state } from "./state"
 import { performReplacements } from "./engine"
 import { addMenuButton } from "./ui"
-import { getChapterIdFromUrl, log } from "./utils"
+import { CHAPTER_BODY_SELECTOR } from "./config"
+import {
+	findChapterBodyById,
+	findChapterBodyForUrl,
+	findChapterContainerForUrl,
+	getChapterProcessingId,
+	log,
+} from "./utils"
 
 export function waitForInitialContent() {
 	log(state.globalSettings, "WTR Term Replacer: Starting robust content detection for slow-loading websites...")
@@ -18,18 +25,22 @@ export function waitForInitialContent() {
 
 function _detectContentWithMultipleStrategies() {
 	const detectionStrategies = [
-		// Strategy 1: Standard chapter ID detection
+		// Strategy 1: Standard chapter ID/tracker detection
 		() => {
-			const chapterId = getChapterIdFromUrl(window.location.href)
-			const contentContainer = chapterId ? document.querySelector(`#${chapterId}`) : null
-			return contentContainer ? { container: contentContainer, strategy: "chapter-id" } : null
+			const contentContainer = findChapterContainerForUrl(document)
+			return contentContainer ? { container: contentContainer, strategy: "chapter-container" } : null
 		},
 
 		// Strategy 2: Look for chapter body directly
 		() => {
-			const CHAPTER_BODY_SELECTOR = ".chapter-body"
-			const chapterBody = document.querySelector(CHAPTER_BODY_SELECTOR)
-			return chapterBody ? { container: chapterBody.closest('[id*="chapter"]'), strategy: "chapter-body" } : null
+			const chapterBody = findChapterBodyForUrl(document)
+			return chapterBody
+				? {
+						container:
+							chapterBody.closest(".chapter-container, .chapter-tracker, [id*=\"chapter\"]") || chapterBody,
+						strategy: "chapter-body",
+					}
+				: null
 		},
 
 		// Strategy 3: Look for any container with substantial content
@@ -123,9 +134,9 @@ function isContentReadyForProcessing(container) {
 	const hasSubstantialContent = container.textContent?.trim().length > 100
 	const hasNoActiveLoaders = !container.querySelector('.loading, .spinner, [style*="loading"], .skeleton')
 	const isVisible = container.offsetWidth > 0 && container.offsetHeight > 0
-	const CHAPTER_BODY_SELECTOR = ".chapter-body"
 	const hasChapterContent =
-		container.querySelector(CHAPTER_BODY_SELECTOR) || container.querySelector("p, h1, h2, h3, h4, h5, h6")
+		container.querySelector(`${CHAPTER_BODY_SELECTOR}, .wtr-line, [data-line]`) ||
+		container.querySelector("p, h1, h2, h3, h4, h5, h6")
 
 	return hasSubstantialContent && hasNoActiveLoaders && isVisible && hasChapterContent
 }
@@ -153,30 +164,33 @@ function setupContentObserver() {
 				// Check if substantial content was added
 				for (const node of mutation.addedNodes) {
 					if (node.nodeType === Node.ELEMENT_NODE) {
-						const textContent = node.textContent?.trim() || ""
+						const element = node as Element
+						const textContent = element.textContent?.trim() || ""
+						const className = typeof element.className === "string" ? element.className : element.getAttribute("class") || ""
 
 						// Detect multi-script data attributes being added
-						if (node.hasAttribute?.("data-smart-quotes-processed")) {
+						if (element.hasAttribute?.("data-smart-quotes-processed")) {
 							detectedScriptChanges.push("Smart Quotes")
 							shouldCheckForContent = true
 						}
-						if (node.hasAttribute?.("data-uncensor-processed")) {
+						if (element.hasAttribute?.("data-uncensor-processed")) {
 							detectedScriptChanges.push("Uncensor")
 							shouldCheckForContent = true
 						}
-						if (node.hasAttribute?.("data-auto-scroll") || node.hasAttribute?.("data-reader-enhanced")) {
+						if (element.hasAttribute?.("data-auto-scroll") || element.hasAttribute?.("data-reader-enhanced")) {
 							detectedScriptChanges.push("Reader Enhancer")
 							shouldCheckForContent = true
 						}
 
-						// More strict content validation to reduce false positives
+						// More strict content validation to reduce false positives while supporting the new tracker DOM.
 						if (
 							textContent.length > 100 &&
 							!textContent.includes("loading") &&
 							!textContent.includes("...") &&
-							(node.id?.includes("chapter") ||
-								node.className?.includes("chapter") ||
-								node.querySelector(".chapter-body"))
+							(element.id?.includes("chapter") ||
+								className.includes("chapter") ||
+								element.matches?.(`.chapter-tracker, .chapter-container, ${CHAPTER_BODY_SELECTOR}, .wtr-line, [data-line]`) ||
+								element.querySelector(`${CHAPTER_BODY_SELECTOR}, .chapter-tracker, .chapter-container, .wtr-line, [data-line]`))
 						) {
 							shouldCheckForContent = true
 							break
@@ -253,17 +267,12 @@ function setupFallbackDetection() {
 		log(`WTR Term Replacer: Fallback attempt ${fallbackAttempts}/${maxFallbackAttempts}`)
 
 		// Try processing if we have any chapter-like content
-		const chapterId = getChapterIdFromUrl(window.location.href)
-		if (chapterId) {
-			const CHAPTER_BODY_SELECTOR = ".chapter-body"
-			const chapterSelector = `#${chapterId} ${CHAPTER_BODY_SELECTOR}`
-			const chapterBody = document.querySelector(chapterSelector)
-			if (chapterBody) {
-				log("WTR Term Replacer: Fallback processing successful")
-				processVisibleChapter()
-				clearInterval(fallbackInterval)
-				return
-			}
+		const chapterBody = findChapterBodyForUrl(document)
+		if (chapterBody) {
+			log("WTR Term Replacer: Fallback processing successful")
+			processVisibleChapter()
+			clearInterval(fallbackInterval)
+			return
 		}
 
 		// Check for any substantial content that might be chapter content
@@ -287,14 +296,9 @@ function setupFallbackDetection() {
 }
 
 export function processVisibleChapter() {
-	const chapterId = getChapterIdFromUrl(window.location.href)
-	if (!chapterId) {
-		return
-	}
-	const CHAPTER_BODY_SELECTOR = ".chapter-body"
-	const chapterSelector = `#${chapterId} ${CHAPTER_BODY_SELECTOR}`
-	const chapterBody = document.querySelector(chapterSelector)
-	if (!chapterBody) {
+	const chapterBody = findChapterBodyForUrl(document)
+	const chapterId = getChapterProcessingId(window.location.href, chapterBody)
+	if (!chapterId || !chapterBody) {
 		return
 	}
 	if (chapterBody.dataset.wtrProcessed === "true") {
@@ -309,7 +313,10 @@ function scheduleChapterProcessing(chapterId, _chapterBody) {
 	const processingKey = `${chapterId}_${Date.now()}`
 
 	// Enhanced queue management with proper synchronization
-	if (state.processingQueue.has(chapterId)) {
+	const alreadyQueued = Array.from(state.processingQueue as Set<string>).some(
+		(key) => key === chapterId || key.startsWith(`${chapterId}_`),
+	)
+	if (alreadyQueued) {
 		log(
 			`WTR Term Replacer: Chapter ${chapterId} already queued for processing ${state.processingQueue.size} queued`,
 		)
@@ -344,10 +351,8 @@ async function executeProcessingWithRetry(chapterId, retryAttempts, attemptIndex
 			return
 		}
 
-		// Re-acquire chapter body element dynamically to avoid stale references
-		const CHAPTER_BODY_SELECTOR = ".chapter-body"
-		const chapterSelector = `#${chapterId} ${CHAPTER_BODY_SELECTOR}`
-		const chapterBody = document.querySelector(chapterSelector)
+		// Re-acquire chapter body element dynamically to avoid stale references.
+		const chapterBody = findChapterBodyById(chapterId) || findChapterBodyForUrl(document)
 
 		if (!chapterBody) {
 			throw new Error("Chapter body element not found")
@@ -517,7 +522,7 @@ async function performRobustReplacements(chapterBody, chapterId, forceProcess = 
 			log(`WTR Term Replacer: Processing chapter ${chapterId} with robust method`)
 		}
 
-		performReplacements(chapterBody)
+		await performReplacements(chapterBody)
 		chapterBody.dataset.wtrProcessed = "true"
 		addMenuButton()
 
@@ -547,24 +552,21 @@ function isElementReadyForProcessing(element) {
 }
 
 export function reprocessCurrentChapter() {
-	const chapterId = getChapterIdFromUrl(window.location.href)
-	if (!chapterId) {
+	const chapterBody = findChapterBodyForUrl(document)
+	const chapterId = getChapterProcessingId(window.location.href, chapterBody)
+	if (!chapterId || !chapterBody) {
 		return
 	}
-	const CHAPTER_BODY_SELECTOR = ".chapter-body"
-	const chapterSelector = `#${chapterId} ${CHAPTER_BODY_SELECTOR}`
-	const chapterBody = document.querySelector(chapterSelector)
-	if (chapterBody) {
-		// Reset processing state to allow reprocessing
-		chapterBody.dataset.wtrProcessed = "false"
 
-		// Clear any existing processing entries for this chapter
-		const existingKeys = Array.from(state.processingQueue as Set<string>).filter((key) => key.startsWith(chapterId))
-		existingKeys.forEach((key) => state.processingQueue.delete(key))
+	// Reset processing state to allow reprocessing
+	chapterBody.dataset.wtrProcessed = "false"
 
-		// Use robust reprocessing with retry mechanism
-		scheduleChapterProcessing(chapterId, chapterBody)
-	}
+	// Clear any existing processing entries for this chapter
+	const existingKeys = Array.from(state.processingQueue as Set<string>).filter((key) => key.startsWith(chapterId))
+	existingKeys.forEach((key) => state.processingQueue.delete(key))
+
+	// Use robust reprocessing with retry mechanism
+	scheduleChapterProcessing(chapterId, chapterBody)
 }
 
 function monitorURLChanges() {
