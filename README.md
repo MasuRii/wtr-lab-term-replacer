@@ -99,6 +99,8 @@ If you run both this script and WTR Lab Term Inconsistency Finder, they can talk
 
 This is handled automatically. Just have both scripts installed and active on the same page.
 
+**Compatibility Note:** As of Finder v5.7.0, the bridge detects Term Replacer via the `.replacer-settings-btn` class, which works on both the legacy Bootstrap UI and the modern Shadcn/Tailwind UI.
+
 ## Privacy
 
 All saved term data stays in your browser through the userscript manager's storage. Suggestions use same-origin WTR-Lab term APIs only when needed, such as automatic lookups or Refresh Suggestions. The script stores sanitized term metadata with short TTLs, never raw chapter bodies, and never users arrays or personal identifiers from suggestion responses.
