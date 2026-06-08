@@ -1,43 +1,15 @@
-// webpack.config.js
+// webpack.config.cjs
 // Multi-build configuration for WTR Lab Term Replacer
 
 const path = require("path");
 const webpack = require("webpack");
 const { UserscriptPlugin } = require("webpack-userscript");
-const pkg = require("./package.json");
-const { VERSION_INFO, getVersion } = require("./config/versions.js");
-
-// Common metadata for all builds
-const COMMON_META = {
-  description: pkg.description,
-  author: pkg.author,
-  license: pkg.license,
-  namespace: "https://github.com/MasuRii/wtr-lab-term-replacer-webpack",
-  match: [
-    "https://wtr-lab.com/en/novel/*/*/*"
-  ],
-  icon: "https://www.google.com/s2/favicons?sz=64&domain=wtr-lab.com",
-  connect: [
-    "fonts.googleapis.com"
-  ],
-  grant: [
-    "GM_setValue",
-    "GM_getValue",
-    "GM_listValues",
-    "GM_addStyle",
-    "GM_registerMenuCommand",
-  ],
-  "run-at": "document-idle",
-  supportURL: "https://github.com/MasuRii/wtr-lab-term-replacer-webpack/issues",
-  homepage: "https://github.com/MasuRii/wtr-lab-term-replacer-webpack#readme",
-};
-
-// Script name constants
-const SCRIPT_NAME = "WTR Lab Term Replacer";
-const PACKAGE_NAME = pkg.name;
-
-// Build time for development builds
-const buildTime = new Date().toISOString().replace(/[:-]|\.\d{3}/g, "").slice(0, 15);
+const {
+  PACKAGE_NAME,
+  createDevHeaders,
+  createGreasyForkHeaders,
+  createPerformanceHeaders,
+} = require("./userscript.metadata.cjs");
 
 // 1. Performance Build (Production)
 const performanceConfig = {
@@ -81,13 +53,7 @@ const performanceConfig = {
       process: '({ env: {} })',
     }),
     new UserscriptPlugin({
-      headers: {
-        ...COMMON_META,
-        name: SCRIPT_NAME,
-        version: getVersion("semantic"),
-        downloadURL: `https://github.com/MasuRii/wtr-lab-term-replacer-webpack#readme/raw/main/dist/${PACKAGE_NAME}.${getVersion("semantic")}.performance.user.js`,
-        updateURL: `https://github.com/MasuRii/wtr-lab-term-replacer-webpack#readme/raw/main/dist/${PACKAGE_NAME}.${getVersion("semantic")}.performance.meta.js`,
-      },
+      headers: createPerformanceHeaders(),
       proxyScript: false,
     }),
   ],
@@ -132,12 +98,7 @@ const greasyforkConfig = {
       process: '({ env: {} })',
     }),
     new UserscriptPlugin({
-      headers: {
-        ...COMMON_META,
-        name: SCRIPT_NAME,
-        version: getVersion("semantic"),
-        // No updateURL/downloadURL for GreasyFork compliance
-      },
+      headers: createGreasyForkHeaders(),
       proxyScript: false,
     }),
   ],
@@ -198,11 +159,7 @@ const devConfig = {
       process: '({ env: {} })',
     }),
     new UserscriptPlugin({
-      headers: {
-        ...COMMON_META,
-        name: `${SCRIPT_NAME} [DEV]`,
-        version: getVersion("dev"),
-      },
+      headers: createDevHeaders(),
       proxyScript: {
         baseUrl: "http://localhost:8080",
         filename: "[basename].proxy.user.js",

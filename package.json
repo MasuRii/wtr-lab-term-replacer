@@ -26,14 +26,14 @@
 		"src/"
 	],
 	"scripts": {
-		"build": "npm run version:update && npm run typecheck && webpack --mode=production",
-		"build:performance": "npm run typecheck && webpack --config webpack.config.js --config-name performance --mode=production",
-		"build:greasyfork": "npm run typecheck && webpack --config webpack.config.js --config-name greasyfork --mode=production",
-		"build:devbundle": "npm run typecheck && webpack --config webpack.config.js --config-name dev --mode=development",
-		"dev": "webpack serve --config webpack.config.js --config-name dev --mode=development",
+		"build": "npm run typecheck && webpack --config webpack.config.cjs --mode=production",
+		"build:performance": "npm run typecheck && webpack --config webpack.config.cjs --config-name performance --mode=production",
+		"build:greasyfork": "npm run typecheck && webpack --config webpack.config.cjs --config-name greasyfork --mode=production",
+		"build:devbundle": "npm run typecheck && webpack --config webpack.config.cjs --config-name dev --mode=development",
+		"dev": "webpack serve --config webpack.config.cjs --config-name dev --mode=development",
 		"typecheck": "tsc --noEmit",
 		"lint": "eslint src --ext .ts --max-warnings 0",
-		"validate": "npm run typecheck && npm run lint && npm run build",
+		"validate": "npm run typecheck && npm run lint && npm run build && node scripts/validate-userscript.cjs",
 		"test": "node scripts/run-tests.js",
 		"version:update": "node scripts/update-versions.js update",
 		"version:check": "node scripts/update-versions.js check"

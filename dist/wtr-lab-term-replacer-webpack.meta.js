@@ -7,7 +7,7 @@
 // @supportURL https://github.com/MasuRii/wtr-lab-term-replacer-webpack/issues
 // @match https://wtr-lab.com/en/novel/*/*/*
 // @connect fonts.googleapis.com
-// @downloadURL https://github.com/MasuRii/wtr-lab-term-replacer-webpack#readme/raw/main/dist/wtr-lab-term-replacer-webpack.5.7.2.performance.user.js
+// @downloadURL https://raw.githubusercontent.com/MasuRii/wtr-lab-term-replacer-webpack/main/dist/wtr-lab-term-replacer-webpack.user.js
 // @grant GM_setValue
 // @grant GM_getValue
 // @grant GM_listValues
@@ -17,5 +17,5 @@
 // @license MIT
 // @namespace https://github.com/MasuRii/wtr-lab-term-replacer-webpack
 // @run-at document-idle
-// @updateURL https://github.com/MasuRii/wtr-lab-term-replacer-webpack#readme/raw/main/dist/wtr-lab-term-replacer-webpack.5.7.2.performance.meta.js
+// @updateURL https://raw.githubusercontent.com/MasuRii/wtr-lab-term-replacer-webpack/main/dist/wtr-lab-term-replacer-webpack.meta.js
 // ==/UserScript==
