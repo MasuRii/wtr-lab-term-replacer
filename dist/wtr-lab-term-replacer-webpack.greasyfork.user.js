@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name WTR Lab Term Replacer
 // @description A modular, Webpack-powered TypeScript version of the WTR Lab Term Replacer userscript.
-// @version 5.7.1
+// @version 5.7.2
 // @author MasuRii
 // @homepage https://github.com/MasuRii/wtr-lab-term-replacer-webpack#readme
 // @supportURL https://github.com/MasuRii/wtr-lab-term-replacer-webpack/issues
@@ -4869,7 +4869,7 @@ function estimateContentLoadLevel(chapterBody) {
 (module) {
 
 "use strict";
-module.exports = /*#__PURE__*/JSON.parse('{"name":"wtr-lab-term-replacer-webpack","version":"5.7.1","description":"A modular, Webpack-powered TypeScript version of the WTR Lab Term Replacer userscript.","author":"MasuRii","license":"MIT","private":true,"main":"dist/wtr-lab-term-replacer-webpack.user.js","repository":{"type":"git","url":"https://github.com/MasuRii/wtr-lab-term-replacer-webpack.git"},"bugs":{"url":"https://github.com/MasuRii/wtr-lab-term-replacer-webpack/issues"},"keywords":["term","replacement","wtr-lab","userscript","modular","webpack"],"files":["dist/","src/"],"scripts":{"build":"npm run version:update && npm run typecheck && webpack --mode=production","build:performance":"npm run typecheck && webpack --config webpack.config.js --config-name performance --mode=production","build:greasyfork":"npm run typecheck && webpack --config webpack.config.js --config-name greasyfork --mode=production","build:devbundle":"npm run typecheck && webpack --config webpack.config.js --config-name dev --mode=development","dev":"webpack serve --config webpack.config.js --config-name dev --mode=development","typecheck":"tsc --noEmit","test":"node scripts/run-tests.js","version:update":"node scripts/update-versions.js update","version:check":"node scripts/update-versions.js check"},"devDependencies":{"@types/tampermonkey":"^5.0.5","ts-loader":"^9.5.7","typescript":"^6.0.3","webpack":"^5.106.2","webpack-cli":"^7.0.2","webpack-dev-server":"^5.2.3","webpack-userscript":"^3.2.3"}}');
+module.exports = {"version":"5.7.2"};
 
 /***/ }
 

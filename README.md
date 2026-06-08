@@ -1,6 +1,6 @@
 # WTR Lab Term Replacer
 
-[![Version](https://img.shields.io/badge/version-5.7.1-blue.svg)](https://github.com/MasuRii/wtr-lab-term-replacer-webpack/releases)
+[![Version](https://img.shields.io/badge/version-5.7.2-blue.svg)](https://github.com/MasuRii/wtr-lab-term-replacer-webpack/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/MasuRii/wtr-lab-term-replacer-webpack/blob/main/LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-6.0-blue?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Built with Webpack](https://img.shields.io/badge/Built%20with-Webpack-8DD6F9?logo=webpack&logoColor=white)](https://webpack.js.org/)
@@ -64,20 +64,28 @@ The build produces JavaScript userscript files in `dist/`:
 | `wtr-lab-term-replacer-webpack.dev.meta.js` | Development metadata |
 | `wtr-lab-term-replacer-webpack.dev.proxy.user.js` | Dev proxy bundle |
 
-### Other Commands
+### Validation Commands
+
+```bash
+npm run typecheck            # Type-check the TypeScript source
+npm run lint                 # Run ESLint against src/**/*.ts
+npm run build                # Build all userscript artifacts under dist/
+npm run validate             # Standard local gate: typecheck, lint, then build
+```
+
+Additional build helpers:
 
 ```bash
 npm run build:performance    # Performance-optimized bundle only
 npm run build:greasyfork     # GreasyFork bundle only
 npm run build:devbundle      # Development bundle only
 npm run dev                  # Start dev server with hot reload
-npm run typecheck            # Type-check the TypeScript source
 npm run version:check        # Show current version info
 ```
 
 ## How It's Built
 
-The source is TypeScript, bundled by Webpack into standard JavaScript userscript files. The code is split into focused modules:
+The runtime source is mandatory TypeScript under `src/`, bundled by Webpack into standard JavaScript userscript files in `dist/`. Do not hand-edit generated `dist/` artifacts; change TypeScript source and rebuild instead. The code is split into focused modules:
 
 | Module | What it handles |
 |--------|----------------|
@@ -99,7 +107,7 @@ If you run both this script and WTR Lab Term Inconsistency Finder, they can talk
 
 This is handled automatically. Just have both scripts installed and active on the same page.
 
-**Compatibility Note:** As of Finder v5.7.0, the bridge detects Term Replacer via the `.replacer-settings-btn` class, which works on both the legacy Bootstrap UI and the modern Shadcn/Tailwind UI.
+**Compatibility Note:** As of Finder v5.7.1, the bridge detects Term Replacer via the `.replacer-settings-btn` class, which works on both the legacy Bootstrap UI and the modern Shadcn/Tailwind UI.
 
 ## Privacy
 
@@ -107,7 +115,7 @@ All saved term data stays in your browser through the userscript manager's stora
 
 ## Versioning
 
-The current version is **v5.7.1**. Version info is kept in `config/versions.js`, and `npm run version:update` syncs it across the package metadata and generated source files.
+The current version is **v5.7.2**. Version info is kept in `config/versions.js`, and `npm run version:update` syncs it across the package metadata and generated source files.
 
 See [CHANGELOG.md](CHANGELOG.md) for the full release history.
 

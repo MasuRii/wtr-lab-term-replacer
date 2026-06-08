@@ -8,6 +8,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 No unreleased changes.
 
+## [5.7.2] - 2026-06-08
+
+### Changed
+- Refreshed release metadata and generated install artifacts for the 5.7.2 patch release.
+- No runtime behavior changes were introduced.
+
 ## [5.7.1] - 2026-06-02
 
 ### Added
