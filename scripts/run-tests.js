@@ -26,22 +26,29 @@ function compileTsModule(relativePath) {
 		},
 		fileName: sourcePath,
 	})
-	const outputPath = path.join(tempDir, relativePath.replace(/\.ts$/, ".cjs"))
+	const outputPath = path.join(tempDir, relativePath.replace(/\.ts$/, ".js"))
 	fs.mkdirSync(path.dirname(outputPath), { recursive: true })
 	fs.writeFileSync(outputPath, output.outputText, "utf8")
 	return require(outputPath)
 }
 
+compileTsModule("src/modules/config.ts")
 const helpers = compileTsModule("src/modules/termDiscoveryHelpers.ts")
 const utils = compileTsModule("src/modules/utils.ts")
 const {
 	buildReaderGetPayload,
+	buildTermsApiUrl,
 	extractCurrentChapterCandidates,
 	getDiscoveryCandidateKey,
+	getSuggestionPresenceLabelsFromValues,
 	isReplacementSuggestionRequestCurrent,
+	loadReplacementSuggestionBatches,
+	mergeRefreshReplacementSuggestions,
+	mergeReplacementSuggestionsForCandidates,
 	parseNovelTermEntries,
 	parseReplacementPreferences,
 	sanitizeApiText,
+	shouldDisplaySuggestionCount,
 } = helpers
 const { getReaderContextFromPath } = utils
 
@@ -140,6 +147,7 @@ const glossaryTerms = parseNovelTermEntries(
 			},
 			{
 				id: 17,
+				title: "Cultivation",
 				data: {
 					type: "generic",
 					id: 17,
@@ -159,6 +167,7 @@ assert.deepEqual(glossaryTerms, [
 		sourceId: "id.generic.17",
 		hash: "Rabbit Source",
 		lang: "en",
+		sourceLabel: "Generic: Cultivation",
 	},
 	{
 		term: "Alice Source",
@@ -168,8 +177,66 @@ assert.deepEqual(glossaryTerms, [
 		sourceId: "id.raw.31",
 		hash: "Alice Source",
 		lang: "en",
+		sourceLabel: "Raw",
 	},
 ])
+
+const duplicateGlossaryTerms = parseNovelTermEntries(
+	{
+		glossaries: [
+			{
+				data: {
+					type: "raw",
+					id: 31,
+					terms: [[['Song Shuhang'], "宋书航", 1, 1, 20]],
+				},
+			},
+			{
+				data: {
+					type: "raw",
+					id: 31,
+					terms: [[['Sam', 'Song Shuhang'], "宋书航", 5, 1, 10]],
+				},
+			},
+		],
+	},
+	"en",
+)
+assert.equal(duplicateGlossaryTerms.length, 1)
+assert.deepEqual(duplicateGlossaryTerms[0].replacementSuggestions, ["Song Shuhang", "Sam"])
+assert.equal(duplicateGlossaryTerms[0].count, 20)
+assert.equal(duplicateGlossaryTerms[0].sourceLabel, "Raw")
+
+const aiGlossaryTerms = parseNovelTermEntries(
+	{
+		glossaries: [
+			{
+				data: {
+					type: "raw",
+					id: 31,
+					ai_run: { incorrect: [] },
+					terms: [[['Corrected Name'], "修正名", 1, 1, 7]],
+				},
+			},
+		],
+	},
+	"en",
+)
+assert.equal(aiGlossaryTerms[0].sourceLabel, "AI Glossary")
+
+const sourceBadgedSuggestions = mergeReplacementSuggestionsForCandidates(
+	[{ term: "前辈", replacement: "Senior", source: "novel", count: 100, sourceLabel: "Generic: Cultivation" }],
+	[{ replacement: "Elder", count: 80 }],
+)
+assert.deepEqual(sourceBadgedSuggestions.map((suggestion) => suggestion.sourceLabel), [
+	"Source",
+	"Generic: Cultivation",
+	"API",
+])
+
+assert.deepEqual(getSuggestionPresenceLabelsFromValues("Song Shuhang", "song shuhang|Senior White", ""), ["Original"])
+assert.deepEqual(getSuggestionPresenceLabelsFromValues("Senior White", "Song Shuhang / Senior   White", ""), ["Original"])
+assert.deepEqual(getSuggestionPresenceLabelsFromValues("Sam", "Song Shuhang", "sam"), ["Replacement"])
 
 const selectedCandidateKey = getDiscoveryCandidateKey(novelTerms[0])
 const staleCandidateKey = getDiscoveryCandidateKey(novelTerms[1])
@@ -192,4 +259,79 @@ assert.deepEqual(preferences, [
 ])
 assert.equal(Object.keys(preferences[0]).includes("users"), false)
 
-console.log("termDiscoveryHelpers tests passed")
+assert.equal(buildTermsApiUrl("31", false), "/api/v2/reader/terms/31.json")
+const forcedTermsUrl = buildTermsApiUrl("31", true)
+assert.match(forcedTermsUrl, /^\/api\/v2\/reader\/terms\/31\.json\?_wtr_refresh=\d+$/)
+assert.notEqual(forcedTermsUrl, buildTermsApiUrl("31", true))
+
+const mergedSuggestionCandidates = [
+	{
+		term: "宋书航",
+		replacement: "Song Shuhang",
+		replacementSuggestions: ["Song Shuhang", "Sam"],
+		source: "novel",
+		count: 20,
+	},
+]
+const mergedSuggestions = mergeReplacementSuggestionsForCandidates(mergedSuggestionCandidates, [
+	{ replacement: "Song Shuhang", count: 2 },
+	{ replacement: "Alex", count: 1 },
+])
+assert.deepEqual(mergedSuggestions.slice(0, 4), [
+	{ replacement: "宋书航", count: 20, sourceLabel: "Source", sourceRank: -10 },
+	{ replacement: "Song Shuhang", count: 20, sourceLabel: "WTR + API", sourceRank: 30 },
+	{ replacement: "Sam", count: 20, sourceLabel: "WTR", sourceRank: 30 },
+	{ replacement: "Alex", count: 1, sourceLabel: "API", sourceRank: 40 },
+])
+assert.equal(shouldDisplaySuggestionCount({ replacement: "Sam", count: 20, sourceLabel: "WTR" }), true)
+assert.equal(shouldDisplaySuggestionCount({ replacement: "Source", count: 20, sourceLabel: "Source" }), false)
+
+const refreshedSuggestions = mergeRefreshReplacementSuggestions({
+	existingSuggestions: [{ replacement: "Old Term Suggestion", count: 9, sourceLabel: "API", sourceRank: 40 }],
+	seedSuggestions: [],
+	candidates: [{ term: "New Term", replacement: "New Term Suggestion", source: "novel", count: 3 }],
+	loadedSuggestions: [],
+})
+assert.deepEqual(
+	refreshedSuggestions.map((suggestion) => suggestion.replacement),
+	["New Term", "New Term Suggestion"],
+)
+
+async function testProgressiveSuggestionBatches() {
+	let resolveFirst
+	let resolveSecond
+	const first = new Promise((resolve) => {
+		resolveFirst = resolve
+	})
+	const second = new Promise((resolve) => {
+		resolveSecond = resolve
+	})
+	const progress = []
+	const batchPromise = loadReplacementSuggestionBatches(
+		[
+			{ term: "First", source: "novel", count: 1 },
+			{ term: "Second", source: "novel", count: 1 },
+		],
+		(candidate) => (candidate.term === "First" ? first : second),
+		(candidate, suggestions) => progress.push([candidate.term, suggestions.map((suggestion) => suggestion.replacement)]),
+	)
+	resolveSecond([{ replacement: "Second Suggestion", count: 2 }])
+	await Promise.resolve()
+	assert.deepEqual(progress, [["Second", ["Second Suggestion"]]])
+	resolveFirst([{ replacement: "First Suggestion", count: 1 }])
+	assert.deepEqual(await batchPromise, [
+		{ replacement: "First Suggestion", count: 1 },
+		{ replacement: "Second Suggestion", count: 2 },
+	])
+	assert.deepEqual(progress, [
+		["Second", ["Second Suggestion"]],
+		["First", ["First Suggestion"]],
+	])
+}
+
+testProgressiveSuggestionBatches()
+	.then(() => console.log("termDiscoveryHelpers tests passed"))
+	.catch((error) => {
+		console.error(error)
+		process.exitCode = 1
+	})

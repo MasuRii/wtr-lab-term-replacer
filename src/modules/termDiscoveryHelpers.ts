@@ -9,6 +9,7 @@ export interface DiscoveredTermCandidate {
 	sourceId?: string
 	hash?: string
 	lang?: string
+	sourceLabel?: string
 }
 
 export interface ReplacementSuggestion {
@@ -44,6 +45,8 @@ const HTML_TAG_PATTERN = /<[^>]*>/g
 const HTML_ENTITY_PATTERN = /&(?:nbsp|amp|lt|gt|quot|#39);/gi
 const SAFE_IDENTIFIER_PATTERN = /^[A-Za-z0-9_.:-]{1,80}$/
 const WTR_SOURCE_ID_PREFIX = "id."
+const TERMS_REFRESH_PARAM = "_wtr_refresh"
+let termsRefreshCounter = 0
 const COMMON_WORDS = new Set([
 	"A",
 	"An",
@@ -149,6 +152,15 @@ function sanitizeTranslateService(value: unknown): string {
 	return sanitized && /^[a-z][a-z0-9_-]{0,19}$/i.test(sanitized) ? sanitized : "ai"
 }
 
+export function buildTermsApiUrl(rawId: string | number, forceRefresh = false): string {
+	const baseUrl = `/api/v2/reader/terms/${encodeURIComponent(String(rawId))}.json`
+	if (!forceRefresh) {
+		return baseUrl
+	}
+	termsRefreshCounter = (termsRefreshCounter + 1) % 1000
+	return `${baseUrl}?${TERMS_REFRESH_PARAM}=${Date.now() * 1000 + termsRefreshCounter}`
+}
+
 export function buildReaderGetPayload(
 	context: ReaderGetRequestContext,
 	translateService = "ai",
@@ -225,6 +237,7 @@ function getArrayPayload(payload: unknown): unknown[] {
 interface NovelTermEntryContext {
 	item: unknown
 	sourceId?: string
+	sourceLabel?: string
 	lang: string
 }
 
@@ -234,6 +247,26 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isWtrTermTuple(value: unknown): value is unknown[] {
 	return Array.isArray(value) && Array.isArray(value[0]) && (typeof value[1] === "string" || typeof value[1] === "number")
+}
+
+function getGlossarySourceLabel(entry: Record<string, unknown>, inheritedSourceLabel?: string): string | undefined {
+	const data = isRecord(entry.data) ? entry.data : null
+	const explicitSourceLabel = sanitizeApiText(entry.source_label ?? entry.sourceLabel, 40)
+	if (explicitSourceLabel) {
+		return explicitSourceLabel
+	}
+	if (isRecord(data?.ai_run) || data?.build != null) {
+		return "AI Glossary"
+	}
+	const sourceType = sanitizeIdentifier(data?.type ?? entry.type)
+	if (sourceType === "generic") {
+		const title = sanitizeApiText(entry.title ?? data?.title, 40)
+		return title ? `Generic: ${title}` : inheritedSourceLabel || "Generic"
+	}
+	if (sourceType === "raw") {
+		return inheritedSourceLabel || "Raw"
+	}
+	return inheritedSourceLabel
 }
 
 function getGlossarySourceId(entry: Record<string, unknown>): string | undefined {
@@ -251,29 +284,35 @@ function getGlossarySourceId(entry: Record<string, unknown>): string | undefined
 	return `${WTR_SOURCE_ID_PREFIX}${sourceType}.${sourceId}`
 }
 
-function collectNovelTermEntries(payload: unknown, fallbackLang: string, sourceId?: string): NovelTermEntryContext[] {
+function collectNovelTermEntries(
+	payload: unknown,
+	fallbackLang: string,
+	sourceId?: string,
+	sourceLabel?: string,
+): NovelTermEntryContext[] {
 	if (isWtrTermTuple(payload)) {
-		return [{ item: payload, sourceId, lang: fallbackLang }]
+		return [{ item: payload, sourceId, sourceLabel, lang: fallbackLang }]
 	}
 	if (Array.isArray(payload)) {
-		return payload.flatMap((item) => collectNovelTermEntries(item, fallbackLang, sourceId))
+		return payload.flatMap((item) => collectNovelTermEntries(item, fallbackLang, sourceId, sourceLabel))
 	}
 	if (!isRecord(payload)) {
 		return []
 	}
 
 	const localSourceId = getGlossarySourceId(payload) || sourceId
+	const localSourceLabel = getGlossarySourceLabel(payload, sourceLabel)
 	const localLang = sanitizeLang(payload.lang ?? payload.language, fallbackLang)
 	const directTerm = firstTextValue(payload, ["source", "original", "source_text", "sourceText", "from", "term", "raw", "name"])
 	if (directTerm) {
-		return [{ item: payload, sourceId: localSourceId, lang: localLang }]
+		return [{ item: payload, sourceId: localSourceId, sourceLabel: localSourceLabel, lang: localLang }]
 	}
 
 	const nestedEntries: NovelTermEntryContext[] = []
 	for (const fieldName of ["glossaries", "data", "terms", "items", "results", "sources"]) {
 		const value = payload[fieldName]
 		if (value && (Array.isArray(value) || typeof value === "object")) {
-			nestedEntries.push(...collectNovelTermEntries(value, localLang, localSourceId))
+			nestedEntries.push(...collectNovelTermEntries(value, localLang, localSourceId, localSourceLabel))
 		}
 	}
 	return nestedEntries
@@ -372,11 +411,41 @@ export function extractCurrentChapterCandidates(
 	return rankChapterTermCandidates(text, existingTerms, limit)
 }
 
+function getReplacementValues(candidate: DiscoveredTermCandidate): string[] {
+	return textValuesFromArray([candidate.replacement, ...(candidate.replacementSuggestions || [])], MAX_REPLACEMENT_LENGTH)
+}
+
+function mergeNovelTermCandidate(
+	previous: DiscoveredTermCandidate,
+	candidate: DiscoveredTermCandidate,
+): DiscoveredTermCandidate {
+	const preferred = candidate.count > previous.count || (!previous.hash && candidate.hash) ? candidate : previous
+	const replacementValues = textValuesFromArray(
+		[...getReplacementValues(previous), ...getReplacementValues(candidate)],
+		MAX_REPLACEMENT_LENGTH,
+	)
+	const merged: DiscoveredTermCandidate = {
+		...preferred,
+		count: Math.max(previous.count, candidate.count),
+	}
+	if (replacementValues.length > 0) {
+		merged.replacement = replacementValues[0]
+	} else {
+		delete merged.replacement
+	}
+	if (replacementValues.length > 1) {
+		merged.replacementSuggestions = replacementValues
+	} else {
+		delete merged.replacementSuggestions
+	}
+	return merged
+}
+
 export function parseNovelTermEntries(payload: unknown, lang = "en", limit = MAX_RESULTS): DiscoveredTermCandidate[] {
 	const deduped = new Map<string, DiscoveredTermCandidate>()
 	const entries = collectNovelTermEntries(payload, sanitizeLang(lang))
 
-	for (const { item, sourceId: inheritedSourceId, lang: entryLang } of entries) {
+	for (const { item, sourceId: inheritedSourceId, sourceLabel, lang: entryLang } of entries) {
 		let term: string | null = null
 		let replacement: string | null = null
 		let replacementSuggestions: string[] = []
@@ -427,11 +496,14 @@ export function parseNovelTermEntries(payload: unknown, lang = "en", limit = MAX
 			sourceId,
 			hash,
 			lang: candidateLang,
+			...(sourceLabel ? { sourceLabel } : {}),
 		}
 		const mapKey = term.toLocaleLowerCase()
 		const previous = deduped.get(mapKey)
-		if (!previous || candidate.count > previous.count || (!previous.hash && candidate.hash)) {
+		if (!previous) {
 			deduped.set(mapKey, candidate)
+		} else {
+			deduped.set(mapKey, mergeNovelTermCandidate(previous, candidate))
 		}
 	}
 
@@ -456,6 +528,172 @@ export function isReplacementSuggestionRequestCurrent(
 	currentInputValue: string,
 ): boolean {
 	return requestId === latestRequestId && candidateKey === selectedCandidateKey && inputValue === currentInputValue
+}
+
+function normalizeReplacementSuggestion(
+	replacement: string,
+	count = 0,
+	sourceLabel = "",
+	sourceRank = 50,
+): ReplacementSuggestion | null {
+	const normalizedReplacement = replacement.replace(/\s+/g, " ").trim()
+	if (!normalizedReplacement) {
+		return null
+	}
+	return { replacement: normalizedReplacement, count, sourceLabel, sourceRank }
+}
+
+function mergeSuggestionLabels(existingLabel = "", newLabel = ""): string {
+	const labels = new Set(
+		[...existingLabel.split(" + "), ...newLabel.split(" + ")].map((label) => label.trim()).filter(Boolean),
+	)
+	return Array.from(labels).join(" + ")
+}
+
+function getSuggestionSourcePriority(suggestion: ReplacementSuggestion): number {
+	const sourceLabel = (suggestion.sourceLabel || "").toLowerCase()
+	return sourceLabel.includes("wtr") && sourceLabel.includes("api") ? -1 : 0
+}
+
+function dedupeReplacementSuggestions(suggestions: ReplacementSuggestion[]): ReplacementSuggestion[] {
+	const deduped = new Map<string, ReplacementSuggestion>()
+	suggestions.forEach((suggestion) => {
+		const normalized = normalizeReplacementSuggestion(
+			suggestion.replacement,
+			suggestion.count,
+			suggestion.sourceLabel,
+			suggestion.sourceRank,
+		)
+		if (!normalized) {
+			return
+		}
+		const key = normalized.replacement
+		const existing = deduped.get(key)
+		if (!existing) {
+			deduped.set(key, normalized)
+			return
+		}
+		existing.count = Math.max(existing.count, normalized.count)
+		existing.sourceRank = Math.min(existing.sourceRank ?? 50, normalized.sourceRank ?? 50)
+		existing.sourceLabel = mergeSuggestionLabels(existing.sourceLabel, normalized.sourceLabel)
+	})
+	return Array.from(deduped.values()).sort(
+		(a, b) =>
+			(a.sourceRank ?? 50) - (b.sourceRank ?? 50) ||
+			getSuggestionSourcePriority(a) - getSuggestionSourcePriority(b) ||
+			b.count - a.count ||
+			a.replacement.localeCompare(b.replacement),
+	)
+}
+
+export function mergeReplacementSuggestionsForCandidates(
+	candidates: DiscoveredTermCandidate[],
+	suggestions: ReplacementSuggestion[],
+): ReplacementSuggestion[] {
+	const mergedSuggestions: ReplacementSuggestion[] = []
+	for (const candidate of candidates) {
+		mergedSuggestions.push({
+			replacement: candidate.term,
+			count: candidate.count,
+			sourceLabel: "Source",
+			sourceRank: -10,
+		})
+		const candidateReplacements = candidate.replacementSuggestions?.length
+			? candidate.replacementSuggestions
+			: candidate.replacement
+				? [candidate.replacement]
+				: []
+		candidateReplacements.forEach((replacement) => {
+			mergedSuggestions.push({
+				replacement,
+				count: candidate.count,
+				sourceLabel: candidate.sourceLabel || "WTR",
+				sourceRank: 30,
+			})
+		})
+	}
+	mergedSuggestions.push(
+		...suggestions.map((suggestion) => ({
+			...suggestion,
+			sourceLabel: suggestion.sourceLabel || "API",
+			sourceRank: suggestion.sourceRank ?? 40,
+		})),
+	)
+	return dedupeReplacementSuggestions(mergedSuggestions)
+}
+
+function normalizeSuggestionPresenceToken(value: string): string {
+	return value.replace(/\s+/g, " ").trim().toLocaleLowerCase()
+}
+
+function getSuggestionPresenceTokens(value: string): Set<string> {
+	return new Set(
+		value
+			.split(/\s*(?:\||\/|,|;|\n)\s*/)
+			.map(normalizeSuggestionPresenceToken)
+			.filter(Boolean),
+	)
+}
+
+export function getSuggestionPresenceLabelsFromValues(
+	suggestion: string,
+	originalValue: string,
+	replacementValue: string,
+): string[] {
+	const labels: string[] = []
+	const normalizedSuggestion = normalizeSuggestionPresenceToken(suggestion)
+	if (!normalizedSuggestion) {
+		return labels
+	}
+	if (getSuggestionPresenceTokens(originalValue).has(normalizedSuggestion)) {
+		labels.push("Original")
+	}
+	if (getSuggestionPresenceTokens(replacementValue).has(normalizedSuggestion)) {
+		labels.push("Replacement")
+	}
+	return labels
+}
+
+export function shouldDisplaySuggestionCount(suggestion: ReplacementSuggestion): boolean {
+	const sourceLabel = (suggestion.sourceLabel || "").toLowerCase()
+	return suggestion.count > 0 && /wtr|raw|generic|glossary|current|api|user|profile|preference|community/.test(sourceLabel)
+}
+
+interface RefreshSuggestionMergeInput {
+	existingSuggestions: ReplacementSuggestion[]
+	seedSuggestions: ReplacementSuggestion[]
+	candidates: DiscoveredTermCandidate[]
+	loadedSuggestions: ReplacementSuggestion[]
+	mergeExisting?: boolean
+}
+
+export function mergeRefreshReplacementSuggestions({
+	existingSuggestions,
+	seedSuggestions,
+	candidates,
+	loadedSuggestions,
+	mergeExisting = false,
+}: RefreshSuggestionMergeInput): ReplacementSuggestion[] {
+	return dedupeReplacementSuggestions([
+		...(mergeExisting ? existingSuggestions : []),
+		...seedSuggestions,
+		...mergeReplacementSuggestionsForCandidates(candidates, loadedSuggestions),
+	])
+}
+
+export async function loadReplacementSuggestionBatches(
+	candidates: DiscoveredTermCandidate[],
+	loadSuggestions: (candidate: DiscoveredTermCandidate) => Promise<ReplacementSuggestion[]>,
+	onBatch: (candidate: DiscoveredTermCandidate, suggestions: ReplacementSuggestion[]) => void,
+): Promise<ReplacementSuggestion[]> {
+	const batches = await Promise.all(
+		candidates.map(async (candidate) => {
+			const suggestions = await loadSuggestions(candidate)
+			onBatch(candidate, suggestions)
+			return suggestions
+		}),
+	)
+	return batches.flat()
 }
 
 export function parseReplacementPreferences(payload: unknown, limit = 20): ReplacementSuggestion[] {

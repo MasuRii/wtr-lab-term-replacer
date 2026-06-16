@@ -2,6 +2,7 @@ import { getReaderContextFromPath, type ReaderUrlContext } from "./utils"
 import {
 	DiscoveredTermCandidate,
 	ReplacementSuggestion,
+	buildTermsApiUrl,
 	parseNovelTermEntries,
 	parseReplacementPreferences,
 } from "./termDiscoveryHelpers"
@@ -85,7 +86,7 @@ export async function loadNovelTermEntries(forceRefresh = false): Promise<Discov
 		}
 	}
 
-	const apiPayload = await fetchJson(`/api/v2/reader/terms/${encodeURIComponent(context.rawId)}.json`)
+	const apiPayload = await fetchJson(buildTermsApiUrl(context.rawId, forceRefresh))
 	const candidates = parseNovelTermEntries(apiPayload, context.lang, 200)
 	await writeCache(cacheKey, candidates)
 	return candidates

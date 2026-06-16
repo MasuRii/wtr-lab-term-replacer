@@ -31,6 +31,10 @@ import { performReplacements, revertAllReplacements } from "./engine"
 import {
 	DiscoveredTermCandidate,
 	ReplacementSuggestion,
+	getSuggestionPresenceLabelsFromValues,
+	loadReplacementSuggestionBatches,
+	mergeRefreshReplacementSuggestions,
+	shouldDisplaySuggestionCount,
 } from "./termDiscoveryHelpers"
 import {
 	hasPreferenceIdentifiers,
@@ -85,31 +89,22 @@ function ensureDiscoveryState() {
 	return state.termDiscovery
 }
 
-function getFieldSuggestionTokens(fieldId: string): Set<string> {
-	const field = document.getElementById(fieldId) as HTMLInputElement | HTMLTextAreaElement | null
-	return getExistingSuggestionTokens(field?.value || "")
-}
-
 function getSuggestionPresenceLabels(suggestion: string): string[] {
-	const labels: string[] = []
-	const originalTokens = getFieldSuggestionTokens("wtr-original")
-	const replacementTokens = getFieldSuggestionTokens("wtr-replacement")
-	if (originalTokens.has(suggestion)) {
-		labels.push("Original")
-	}
-	if (replacementTokens.has(suggestion)) {
-		labels.push("Replacement")
-	}
-	return labels
+	const originalField = document.getElementById("wtr-original") as HTMLInputElement | HTMLTextAreaElement | null
+	const replacementField = document.getElementById("wtr-replacement") as HTMLInputElement | HTMLTextAreaElement | null
+	return getSuggestionPresenceLabelsFromValues(suggestion, originalField?.value || "", replacementField?.value || "")
 }
 
 function shouldShowSuggestionCount(suggestion: ReplacementSuggestion): boolean {
-	const sourceLabel = (suggestion.sourceLabel || "").toLowerCase()
-	return suggestion.count > 0 && /current|api|user|profile|preference/.test(sourceLabel)
+	return shouldDisplaySuggestionCount(suggestion)
+}
+
+function getDisplaySourceLabel(sourceLabel = "WTR"): string {
+	return sourceLabel === "API" ? "Community" : sourceLabel
 }
 
 function getSuggestionVisualMeta(suggestion: ReplacementSuggestion) {
-	const sourceLabel = suggestion.sourceLabel || "WTR"
+	const sourceLabel = getDisplaySourceLabel(suggestion.sourceLabel || "WTR")
 	const normalizedSource = sourceLabel.toLowerCase()
 	if (shouldShowSuggestionCount(suggestion)) {
 		return { kind: "profile", icon: "profile", sourceLabel }
@@ -161,9 +156,16 @@ function renderReplacementSuggestions(suggestions: ReplacementSuggestion[], mess
 		const visualMeta = getSuggestionVisualMeta(suggestion)
 		const displayCount = shouldShowSuggestionCount(suggestion) ? suggestion.count : 0
 		const metaParts = [visualMeta.sourceLabel, displayCount > 0 ? String(displayCount) : "", ...presenceLabels].filter(Boolean)
+		const presenceClasses = [
+			presenceLabels.length ? "wtr-suggestion-existing" : "",
+			presenceLabels.includes("Original") ? "wtr-suggestion-in-original" : "",
+			presenceLabels.includes("Replacement") ? "wtr-suggestion-in-replacement" : "",
+		]
+			.filter(Boolean)
+			.join(" ")
 		const button = document.createElement("button")
 		button.type = "button"
-		button.className = `wtr-replacement-suggestion-btn wtr-suggestion-${visualMeta.kind}${presenceLabels.length ? " wtr-suggestion-existing" : ""}`
+		button.className = `wtr-replacement-suggestion-btn wtr-suggestion-${visualMeta.kind}${presenceClasses ? ` ${presenceClasses}` : ""}`
 		button.dataset.replacement = suggestion.replacement
 		button.title = metaParts.join(" • ")
 
@@ -181,6 +183,11 @@ function renderReplacementSuggestions(suggestions: ReplacementSuggestion[], mess
 		replacementLabel.className = "wtr-suggestion-label"
 		replacementLabel.textContent = suggestion.replacement
 		button.appendChild(replacementLabel)
+
+		const sourceBadge = document.createElement("span")
+		sourceBadge.className = "wtr-suggestion-source-badge"
+		sourceBadge.textContent = visualMeta.sourceLabel
+		button.appendChild(sourceBadge)
 
 		buttonWrap.appendChild(button)
 	})
@@ -205,6 +212,11 @@ function mergeSuggestionLabels(existingLabel = "", newLabel = ""): string {
 		[...existingLabel.split(" + "), ...newLabel.split(" + ")].map((label) => label.trim()).filter(Boolean),
 	)
 	return Array.from(labels).join(" + ")
+}
+
+function getSuggestionSourcePriority(suggestion: ReplacementSuggestion): number {
+	const sourceLabel = (suggestion.sourceLabel || "").toLowerCase()
+	return sourceLabel.includes("wtr") && sourceLabel.includes("api") ? -1 : 0
 }
 
 function dedupeReplacementSuggestions(suggestions: ReplacementSuggestion[]): ReplacementSuggestion[] {
@@ -232,6 +244,7 @@ function dedupeReplacementSuggestions(suggestions: ReplacementSuggestion[]): Rep
 	return Array.from(deduped.values()).sort(
 		(a, b) =>
 			(a.sourceRank ?? 50) - (b.sourceRank ?? 50) ||
+			getSuggestionSourcePriority(a) - getSuggestionSourcePriority(b) ||
 			b.count - a.count ||
 			a.replacement.localeCompare(b.replacement),
 	)
@@ -393,42 +406,6 @@ function findNovelCandidatesByOriginalInput(
 	return Array.from(deduped.values()).slice(0, 10)
 }
 
-function mergeReplacementSuggestions(
-	candidates: DiscoveredTermCandidate[],
-	suggestions: ReplacementSuggestion[],
-): ReplacementSuggestion[] {
-	const mergedSuggestions: ReplacementSuggestion[] = []
-	for (const candidate of candidates) {
-		mergedSuggestions.push({
-			replacement: candidate.term,
-			count: 0,
-			sourceLabel: "Source",
-			sourceRank: -10,
-		})
-		const candidateReplacements = candidate.replacementSuggestions?.length
-			? candidate.replacementSuggestions
-			: candidate.replacement
-				? [candidate.replacement]
-				: []
-		candidateReplacements.forEach((replacement) => {
-			mergedSuggestions.push({
-				replacement,
-				count: 0,
-				sourceLabel: "WTR",
-				sourceRank: 30,
-			})
-		})
-	}
-	mergedSuggestions.push(
-		...suggestions.map((suggestion) => ({
-			...suggestion,
-			sourceLabel: suggestion.sourceLabel || "API",
-			sourceRank: suggestion.sourceRank ?? 40,
-		})),
-	)
-	return dedupeReplacementSuggestions(mergedSuggestions)
-}
-
 let replacementSuggestionRequestId = 0
 let replacementSuggestionTimeout: ReturnType<typeof setTimeout> | null = null
 let suppressNextReplacementSuggestionInput = false
@@ -465,8 +442,30 @@ async function updateReplacementSuggestionsForCandidates(
 		return
 	}
 
-	const loadedSuggestions = await Promise.all(
-		candidates.map(async (candidate) => {
+	const loadedSuggestions: ReplacementSuggestion[] = []
+	const renderMergedSuggestions = (isFinalRender = false) => {
+		if (!isActiveReplacementSuggestionRequest(requestId, inputValue)) {
+			return
+		}
+		const mergedSuggestions = mergeRefreshReplacementSuggestions({
+			existingSuggestions,
+			seedSuggestions,
+			candidates,
+			loadedSuggestions,
+			mergeExisting,
+		})
+		discovery.replacementSuggestions = mergedSuggestions
+		renderReplacementSuggestions(
+			mergedSuggestions,
+			isFinalRender && !mergedSuggestions.length ? "No replacement suggestions found for this original text." : "",
+		)
+	}
+
+	renderMergedSuggestions()
+
+	await loadReplacementSuggestionBatches(
+		candidates,
+		async (candidate) => {
 			if (!hasPreferenceIdentifiers(candidate)) {
 				return [] as ReplacementSuggestion[]
 			}
@@ -476,23 +475,14 @@ async function updateReplacementSuggestionsForCandidates(
 				log(state.globalSettings, "WTR Term Replacer: Replacement suggestions unavailable", error)
 				return [] as ReplacementSuggestion[]
 			}
-		}),
+		},
+		(_candidate, suggestions) => {
+			loadedSuggestions.push(...suggestions)
+			renderMergedSuggestions()
+		},
 	)
 
-	if (!isActiveReplacementSuggestionRequest(requestId, inputValue)) {
-		return
-	}
-
-	const mergedSuggestions = dedupeReplacementSuggestions([
-		...existingSuggestions,
-		...seedSuggestions,
-		...mergeReplacementSuggestions(candidates, loadedSuggestions.flat()),
-	])
-	discovery.replacementSuggestions = mergedSuggestions
-	renderReplacementSuggestions(
-		mergedSuggestions,
-		mergedSuggestions.length ? "" : "No replacement suggestions found for this original text.",
-	)
+	renderMergedSuggestions(true)
 }
 
 export function clearDiscoveryFormState() {
@@ -566,7 +556,7 @@ export async function handleRefreshSuggestionsClick() {
 		await updateReplacementSuggestionsForCandidates(
 			findNovelCandidatesByOriginalInput(options.value, options.isRegex, options.caseSensitive),
 			options.value,
-			true,
+			false,
 			getOriginalInputFieldSuggestions(options.value, options.isRegex),
 		)
 	} catch (error) {
@@ -588,7 +578,7 @@ function getExistingSuggestionTokens(value: string): Set<string> {
 	return new Set(
 		value
 			.split(/\s*(?:\||\/|,|;|\n)\s*/)
-			.map((token) => token.trim())
+			.map((token) => token.replace(/\s+/g, " ").trim().toLocaleLowerCase())
 			.filter(Boolean),
 	)
 }
@@ -670,7 +660,7 @@ function mergeSuggestionInputValue(
 	if (!trimmedValue) {
 		return replacement
 	}
-	if (getExistingSuggestionTokens(trimmedValue).has(replacement)) {
+	if (getExistingSuggestionTokens(trimmedValue).has(replacement.replace(/\s+/g, " ").trim().toLocaleLowerCase())) {
 		return currentValue
 	}
 	return `${currentValue.trimEnd()}${getSuggestionAppendSeparator(trimmedValue, isRegex, targetField)}${replacement}`

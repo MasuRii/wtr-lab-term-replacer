@@ -288,6 +288,11 @@ const UI_CSS = `
     }
     .wtr-suggestion-icon-segment svg { width: 1rem; height: 1rem; }
     .wtr-suggestion-label { padding: 0 0.375rem; }
+    .wtr-suggestion-source-badge {
+        align-self: stretch; display: inline-flex; align-items: center; padding: 0 0.35rem;
+        border-left: 1px solid rgba(255,255,255,0.24); background: rgba(15,23,42,0.22);
+        font-size: 0.65rem; font-weight: 800; letter-spacing: 0.015em; text-transform: uppercase;
+    }
     .wtr-suggestion-google { background-color: #4285f4; border-color: transparent; }
     .wtr-suggestion-google:hover { background-color: #5b9bff; }
     .wtr-suggestion-source { background-color: #374151; border-color: rgba(0,0,0,0.25); }
@@ -295,6 +300,14 @@ const UI_CSS = `
     .wtr-suggestion-field { background-color: #4f46e5; border-color: rgba(79,70,229,0.65); }
     .wtr-suggestion-field:hover { background-color: #6366f1; }
     .wtr-replacement-suggestion-btn.wtr-suggestion-existing { box-shadow: inset 0 0 0 1px rgba(255,255,255,0.38); }
+    .wtr-replacement-suggestion-btn.wtr-suggestion-in-original {
+        background-color: #7c3aed; border-color: rgba(124,58,237,0.78);
+    }
+    .wtr-replacement-suggestion-btn.wtr-suggestion-in-original:hover { background-color: #8b5cf6; }
+    .wtr-replacement-suggestion-btn.wtr-suggestion-in-replacement:not(.wtr-suggestion-in-original) {
+        background-color: #6d28d9; border-color: rgba(109,40,217,0.72);
+    }
+    .wtr-replacement-suggestion-btn.wtr-suggestion-in-replacement:not(.wtr-suggestion-in-original):hover { background-color: #7c3aed; }
     .wtr-replacer-popover-actions { display: flex; flex-direction: column; gap: 0.25rem; }
     .wtr-replacer-popover-add-btn { white-space: nowrap; margin-top: 0.25rem !important; }
 
