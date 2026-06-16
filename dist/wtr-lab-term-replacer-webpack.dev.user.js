@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name WTR Lab Term Replacer [DEV]
 // @description A modular, Webpack-powered TypeScript version of the WTR Lab Term Replacer userscript.
-// @version 5.7.2-dev.1781628541913
+// @version 5.7.3-dev.1781632810970
 // @author MasuRii
 // @homepage https://github.com/MasuRii/wtr-lab-term-replacer-webpack#readme
 // @supportURL https://github.com/MasuRii/wtr-lab-term-replacer-webpack/issues
@@ -639,6 +639,7 @@ var engine = __webpack_require__(9);
 const MAX_TERM_LENGTH = 80;
 const MAX_REPLACEMENT_LENGTH = 120;
 const MAX_RESULTS = 100;
+const CJK_PATTERN = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\uAC00-\uD7AF]/u;
 const CONTROL_CHARS_PATTERN = /[\u0000-\u001f\u007f]/g;
 const HTML_TAG_PATTERN = /<[^>]*>/g;
 const HTML_ENTITY_PATTERN = /&(?:nbsp|amp|lt|gt|quot|#39);/gi;
@@ -868,7 +869,7 @@ function collectNovelTermEntries(payload, fallbackLang, sourceId, sourceLabel) {
         return [{ item: payload, sourceId: localSourceId, sourceLabel: localSourceLabel, lang: localLang }];
     }
     const nestedEntries = [];
-    for (const fieldName of ["glossaries", "data", "terms", "items", "results", "sources"]) {
+    for (const fieldName of ["glossaries", "data", "terms", "replacements", "items", "results", "sources"]) {
         const value = payload[fieldName];
         if (value && (Array.isArray(value) || typeof value === "object")) {
             nestedEntries.push(...collectNovelTermEntries(value, localLang, localSourceId, localSourceLabel));
@@ -1044,6 +1045,177 @@ function getDiscoveryCandidateKey(candidate) {
     }
     return [candidate.term, candidate.replacement || "", candidate.source, candidate.sourceId || "", candidate.hash || "", candidate.lang || ""].join("\u001f");
 }
+function stripSuggestionRegexSyntax(fragment) {
+    return fragment
+        .replace(/\\[bBAZzG]/g, " ")
+        .replace(/\\s[+*?]?/g, " ")
+        .replace(/\\[dDwW][+*?]?/g, " ")
+        .replace(/\((?:\?[:=!<])?([^)]*)\)/g, "$1")
+        .replace(/\[([^\]\\]+)\][+*?]?/g, (_match, chars) => chars.match(/[\p{L}\p{M}\p{N}'-]/u)?.[0] || " ")
+        .replace(/[{}+*?^$]/g, " ")
+        .replace(/\\(.)/g, "$1")
+        .replace(/\s+/g, " ")
+        .trim();
+}
+function splitTopLevelSuggestionAlternatives(value) {
+    const parts = [];
+    let current = "";
+    let isEscaped = false;
+    let characterClassDepth = 0;
+    let groupDepth = 0;
+    for (const char of value) {
+        if (isEscaped) {
+            current += char;
+            isEscaped = false;
+            continue;
+        }
+        if (char === "\\") {
+            current += char;
+            isEscaped = true;
+            continue;
+        }
+        if (char === "[") {
+            characterClassDepth++;
+            current += char;
+            continue;
+        }
+        if (char === "]" && characterClassDepth > 0) {
+            characterClassDepth--;
+            current += char;
+            continue;
+        }
+        if (characterClassDepth === 0 && char === "(") {
+            groupDepth++;
+            current += char;
+            continue;
+        }
+        if (characterClassDepth === 0 && char === ")" && groupDepth > 0) {
+            groupDepth--;
+            current += char;
+            continue;
+        }
+        if (characterClassDepth === 0 && groupDepth === 0 && char === "|") {
+            parts.push(current);
+            current = "";
+            continue;
+        }
+        current += char;
+    }
+    parts.push(current);
+    return parts;
+}
+function getReplacementSuggestionLookupTerms(original, isRegex) {
+    const terms = new Map();
+    const addTerm = (value) => {
+        const term = value.replace(/\s+/g, " ").trim();
+        if (term.length >= 2) {
+            terms.set(term.toLocaleLowerCase(), term);
+        }
+    };
+    if (!isRegex) {
+        addTerm(original);
+        original.split(/[\n,;|/]+/).forEach(addTerm);
+        return Array.from(terms.values());
+    }
+    for (const fragment of splitTopLevelSuggestionAlternatives(original)) {
+        const strippedFragment = stripSuggestionRegexSyntax(fragment);
+        addTerm(strippedFragment);
+        strippedFragment.split(/[,;\n]+/).forEach(addTerm);
+    }
+    stripSuggestionRegexSyntax(original)
+        .split(/[|,;\n]+/)
+        .forEach(addTerm);
+    addTerm(original);
+    return Array.from(terms.values());
+}
+function getCandidateLookupValues(candidate) {
+    return textValuesFromArray([candidate.term, candidate.replacement, ...(candidate.replacementSuggestions || [])], MAX_REPLACEMENT_LENGTH);
+}
+function normalizeSuggestionComparable(value, caseSensitive) {
+    const normalized = value
+        .replace(/[\p{Pd}_/]+/gu, " ")
+        .replace(/[^\p{L}\p{M}\p{N}]+/gu, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+    return caseSensitive ? normalized : normalized.toLocaleLowerCase();
+}
+function suggestionValuesMatch(lookupTerm, candidateValue, caseSensitive) {
+    const normalizedLookupTerm = caseSensitive ? lookupTerm : lookupTerm.toLocaleLowerCase();
+    const normalizedCandidateValue = caseSensitive ? candidateValue : candidateValue.toLocaleLowerCase();
+    if (normalizedCandidateValue === normalizedLookupTerm) {
+        return true;
+    }
+    const comparableLookupTerm = normalizeSuggestionComparable(lookupTerm, caseSensitive);
+    const comparableCandidateValue = normalizeSuggestionComparable(candidateValue, caseSensitive);
+    if (!comparableLookupTerm || !comparableCandidateValue) {
+        return false;
+    }
+    if (comparableCandidateValue === comparableLookupTerm) {
+        return true;
+    }
+    return comparableLookupTerm.length >= 5 && comparableCandidateValue.includes(comparableLookupTerm);
+}
+function buildRawLookupFallbackCandidate(lookupTerm, fallbackContext) {
+    const rawId = sanitizeIdentifier(fallbackContext?.rawId);
+    const lang = sanitizeLang(fallbackContext?.lang, "en");
+    const term = sanitizeApiText(lookupTerm);
+    if (!rawId || !term || !CJK_PATTERN.test(term)) {
+        return null;
+    }
+    return {
+        term,
+        source: "novel",
+        count: 0,
+        sourceId: `${WTR_SOURCE_ID_PREFIX}raw.${rawId}`,
+        hash: term,
+        lang,
+        sourceLabel: "Raw Lookup",
+    };
+}
+function selectReplacementSuggestionCandidates(candidates, lookupTerms, isRegex, caseSensitive, limit = 20, fallbackContext) {
+    const selected = new Map();
+    const addCandidate = (candidate) => {
+        if (selected.size >= limit) {
+            return false;
+        }
+        const key = candidate.term.toLocaleLowerCase();
+        const wasMissing = !selected.has(key);
+        selected.set(key, candidate);
+        return wasMissing;
+    };
+    const dedupedLookupTerms = Array.from(new Map(lookupTerms
+        .map((term) => term.replace(/\s+/g, " ").trim())
+        .filter(Boolean)
+        .map((term) => [term.toLocaleLowerCase(), term])).values());
+    for (const lookupTerm of dedupedLookupTerms) {
+        let matchedCurrentLookupTerm = false;
+        for (const candidate of candidates) {
+            if (getCandidateLookupValues(candidate).some((value) => suggestionValuesMatch(lookupTerm, value, caseSensitive))) {
+                matchedCurrentLookupTerm = addCandidate(candidate) || matchedCurrentLookupTerm;
+            }
+        }
+        if (isRegex) {
+            try {
+                const regex = new RegExp(lookupTerm, caseSensitive ? "" : "i");
+                for (const candidate of candidates) {
+                    if (getCandidateLookupValues(candidate).some((value) => regex.test(value))) {
+                        matchedCurrentLookupTerm = addCandidate(candidate) || matchedCurrentLookupTerm;
+                    }
+                }
+            }
+            catch (_error) {
+                // Invalid in-progress regex input still gets literal/variant suggestions from extracted terms.
+            }
+        }
+        if (!matchedCurrentLookupTerm) {
+            const fallbackCandidate = buildRawLookupFallbackCandidate(lookupTerm, fallbackContext);
+            if (fallbackCandidate) {
+                addCandidate(fallbackCandidate);
+            }
+        }
+    }
+    return Array.from(selected.values()).slice(0, limit);
+}
 function isReplacementSuggestionRequestCurrent(requestId, latestRequestId, candidateKey, selectedCandidateKey, inputValue, currentInputValue) {
     return requestId === latestRequestId && candidateKey === selectedCandidateKey && inputValue === currentInputValue;
 }
@@ -1196,6 +1368,7 @@ function parseReplacementPreferences(payload, limit = 20) {
 const TERM_SUGGESTION_CACHE_PREFIX = "wtr_lab_term_suggestion_cache_v1_";
 const NOVEL_TERMS_CACHE_TTL_MS = 60 * 60 * 1000;
 const PREFERENCES_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
+const NOVEL_TERMS_DISCOVERY_LIMIT = 2000;
 function getReaderContext() {
     return (0,utils/* getReaderContextFromPath */.o7)(window.location.pathname);
 }
@@ -1259,7 +1432,7 @@ async function loadNovelTermEntries(forceRefresh = false) {
         }
     }
     const apiPayload = await fetchJson(buildTermsApiUrl(context.rawId, forceRefresh));
-    const candidates = parseNovelTermEntries(apiPayload, context.lang, 200);
+    const candidates = parseNovelTermEntries(apiPayload, context.lang, NOVEL_TERMS_DISCOVERY_LIMIT);
     await writeCache(cacheKey, candidates);
     return candidates;
 }
@@ -1483,124 +1656,12 @@ function getOriginalInputOptions() {
         caseSensitive: Boolean(caseSensitiveCheckbox?.checked),
     };
 }
-function stripRegexSyntax(fragment) {
-    return fragment
-        .replace(/\\[bBAZzG]/g, " ")
-        .replace(/\\s[+*?]?/g, " ")
-        .replace(/\\[dDwW][+*?]?/g, " ")
-        .replace(/\[([^\]\\]+)\][+*?]?/g, (_match, chars) => chars.match(/[\p{L}\p{M}\p{N}'-]/u)?.[0] || " ")
-        .replace(/\(\?[:=!<][^)]*\)/g, " ")
-        .replace(/[()]/g, " ")
-        .replace(/[{}+*?^$]/g, " ")
-        .replace(/\\(.)/g, "$1")
-        .replace(/\s+/g, " ")
-        .trim();
-}
-function splitTopLevelAlternatives(value) {
-    const parts = [];
-    let current = "";
-    let isEscaped = false;
-    let characterClassDepth = 0;
-    let groupDepth = 0;
-    for (const char of value) {
-        if (isEscaped) {
-            current += char;
-            isEscaped = false;
-            continue;
-        }
-        if (char === "\\") {
-            current += char;
-            isEscaped = true;
-            continue;
-        }
-        if (char === "[") {
-            characterClassDepth++;
-            current += char;
-            continue;
-        }
-        if (char === "]" && characterClassDepth > 0) {
-            characterClassDepth--;
-            current += char;
-            continue;
-        }
-        if (characterClassDepth === 0 && char === "(") {
-            groupDepth++;
-            current += char;
-            continue;
-        }
-        if (characterClassDepth === 0 && char === ")" && groupDepth > 0) {
-            groupDepth--;
-            current += char;
-            continue;
-        }
-        if (characterClassDepth === 0 && groupDepth === 0 && char === "|") {
-            parts.push(current);
-            current = "";
-            continue;
-        }
-        current += char;
-    }
-    parts.push(current);
-    return parts;
-}
-function getSuggestionLookupTerms(original, isRegex) {
-    const terms = new Map();
-    const addTerm = (value) => {
-        const term = value.replace(/\s+/g, " ").trim();
-        if (term.length >= 2) {
-            terms.set(term.toLocaleLowerCase(), term);
-        }
-    };
-    addTerm(original);
-    const splitPattern = isRegex ? /[\n,;]+/ : /[\n,;|/]+/;
-    original.split(splitPattern).forEach(addTerm);
-    if (isRegex) {
-        for (const fragment of splitTopLevelAlternatives(original)) {
-            addTerm(stripRegexSyntax(fragment));
-            stripRegexSyntax(fragment)
-                .split(/[|,;\n]+/)
-                .forEach(addTerm);
-        }
-        stripRegexSyntax(original)
-            .split(/[|,;\n]+/)
-            .forEach(addTerm);
-    }
-    return Array.from(terms.values());
-}
 function findNovelCandidatesByOriginalInput(original, isRegex, caseSensitive) {
     const discovery = ensureDiscoveryState();
     const novelTerms = discovery.novelTerms;
-    const deduped = new Map();
-    const lookupTerms = getSuggestionLookupTerms(original, isRegex);
-    const lookupSet = new Set(lookupTerms.map((term) => (caseSensitive ? term : term.toLocaleLowerCase())));
-    const addCandidate = (candidate) => {
-        deduped.set(candidate.term.toLocaleLowerCase(), candidate);
-    };
-    const getCandidateLookupValues = (candidate) => [
-        candidate.term,
-        ...(candidate.replacement ? [candidate.replacement] : []),
-        ...(candidate.replacementSuggestions || []),
-    ];
-    for (const candidate of novelTerms) {
-        const candidateValues = getCandidateLookupValues(candidate).map((value) => (caseSensitive ? value : value.toLocaleLowerCase()));
-        if (candidateValues.some((candidateValue) => lookupSet.has(candidateValue))) {
-            addCandidate(candidate);
-        }
-    }
-    if (isRegex) {
-        try {
-            const regex = new RegExp(original, caseSensitive ? "" : "i");
-            for (const candidate of novelTerms) {
-                if (getCandidateLookupValues(candidate).some((value) => regex.test(value))) {
-                    addCandidate(candidate);
-                }
-            }
-        }
-        catch (_error) {
-            // Invalid in-progress regex input still gets literal/variant suggestions from extracted terms.
-        }
-    }
-    return Array.from(deduped.values()).slice(0, 10);
+    const lookupTerms = getReplacementSuggestionLookupTerms(original, isRegex);
+    const readerContext = (0,utils/* getReaderContextFromPath */.o7)(window.location.pathname);
+    return selectReplacementSuggestionCandidates(novelTerms, lookupTerms, isRegex, caseSensitive, 20, readerContext);
 }
 let replacementSuggestionRequestId = 0;
 let replacementSuggestionTimeout = null;
@@ -1618,7 +1679,7 @@ function getOriginalInputFieldSuggestions(value, isRegex) {
         .map((part) => handlers_normalizeReplacementSuggestion(part, 0, "Field", 5))
         .filter((suggestion) => Boolean(suggestion));
 }
-async function updateReplacementSuggestionsForCandidates(candidates, inputValue, mergeExisting = false, seedSuggestions = []) {
+async function updateReplacementSuggestionsForCandidates(candidates, inputValue, mergeExisting = false, forceRefreshSuggestions = false, seedSuggestions = []) {
     const discovery = ensureDiscoveryState();
     const existingSuggestions = mergeExisting ? [...(discovery.replacementSuggestions || [])] : [];
     discovery.selectedCandidate = candidates[0] || null;
@@ -1650,7 +1711,7 @@ async function updateReplacementSuggestionsForCandidates(candidates, inputValue,
             return [];
         }
         try {
-            return await loadReplacementSuggestions(candidate);
+            return await loadReplacementSuggestions(candidate, forceRefreshSuggestions);
         }
         catch (error) {
             (0,utils/* log */.Rm)(state/* state */.wk.globalSettings, "WTR Term Replacer: Replacement suggestions unavailable", error);
@@ -1695,7 +1756,7 @@ function handleReplacementSuggestionInput(event) {
         const discovery = ensureDiscoveryState();
         const fieldSuggestions = getOriginalInputFieldSuggestions(query, options.isRegex);
         if (!query) {
-            updateReplacementSuggestionsForCandidates([], query, mergeExisting, fieldSuggestions);
+            updateReplacementSuggestionsForCandidates([], query, mergeExisting, false, fieldSuggestions);
             return;
         }
         if (discovery.novelTerms.length === 0) {
@@ -1706,7 +1767,7 @@ function handleReplacementSuggestionInput(event) {
                 (0,utils/* log */.Rm)(state/* state */.wk.globalSettings, "WTR Term Replacer: Replacement suggestions unavailable", error);
             }
         }
-        updateReplacementSuggestionsForCandidates(findNovelCandidatesByOriginalInput(query, options.isRegex, options.caseSensitive), query, mergeExisting, fieldSuggestions);
+        updateReplacementSuggestionsForCandidates(findNovelCandidatesByOriginalInput(query, options.isRegex, options.caseSensitive), query, mergeExisting, false, fieldSuggestions);
     }, 250);
 }
 async function handleRefreshSuggestionsClick() {
@@ -1723,7 +1784,7 @@ async function handleRefreshSuggestionsClick() {
     try {
         const discovery = ensureDiscoveryState();
         discovery.novelTerms = await loadNovelTermEntries(true);
-        await updateReplacementSuggestionsForCandidates(findNovelCandidatesByOriginalInput(options.value, options.isRegex, options.caseSensitive), options.value, false, getOriginalInputFieldSuggestions(options.value, options.isRegex));
+        await updateReplacementSuggestionsForCandidates(findNovelCandidatesByOriginalInput(options.value, options.isRegex, options.caseSensitive), options.value, false, true, getOriginalInputFieldSuggestions(options.value, options.isRegex));
     }
     catch (error) {
         (0,utils/* log */.Rm)(state/* state */.wk.globalSettings, "WTR Term Replacer: Replacement suggestion refresh failed", error);
@@ -5037,7 +5098,7 @@ function estimateContentLoadLevel(chapterBody) {
 (module) {
 
 "use strict";
-module.exports = {"version":"5.7.2"};
+module.exports = {"version":"5.7.3"};
 
 /***/ }
 
