@@ -40,6 +40,7 @@ export interface ReaderGetPayload {
 const MAX_TERM_LENGTH = 80
 const MAX_REPLACEMENT_LENGTH = 120
 const MAX_RESULTS = 100
+const CJK_PATTERN = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\uAC00-\uD7AF]/u
 const CONTROL_CHARS_PATTERN = /[\u0000-\u001f\u007f]/g
 const HTML_TAG_PATTERN = /<[^>]*>/g
 const HTML_ENTITY_PATTERN = /&(?:nbsp|amp|lt|gt|quot|#39);/gi
@@ -309,7 +310,7 @@ function collectNovelTermEntries(
 	}
 
 	const nestedEntries: NovelTermEntryContext[] = []
-	for (const fieldName of ["glossaries", "data", "terms", "items", "results", "sources"]) {
+	for (const fieldName of ["glossaries", "data", "terms", "replacements", "items", "results", "sources"]) {
 		const value = payload[fieldName]
 		if (value && (Array.isArray(value) || typeof value === "object")) {
 			nestedEntries.push(...collectNovelTermEntries(value, localLang, localSourceId, localSourceLabel))
@@ -517,6 +518,213 @@ export function getDiscoveryCandidateKey(candidate: DiscoveredTermCandidate | nu
 		return ""
 	}
 	return [candidate.term, candidate.replacement || "", candidate.source, candidate.sourceId || "", candidate.hash || "", candidate.lang || ""].join("\u001f")
+}
+
+function stripSuggestionRegexSyntax(fragment: string): string {
+	return fragment
+		.replace(/\\[bBAZzG]/g, " ")
+		.replace(/\\s[+*?]?/g, " ")
+		.replace(/\\[dDwW][+*?]?/g, " ")
+		.replace(/\((?:\?[:=!<])?([^)]*)\)/g, "$1")
+		.replace(/\[([^\]\\]+)\][+*?]?/g, (_match, chars) => chars.match(/[\p{L}\p{M}\p{N}'-]/u)?.[0] || " ")
+		.replace(/[{}+*?^$]/g, " ")
+		.replace(/\\(.)/g, "$1")
+		.replace(/\s+/g, " ")
+		.trim()
+}
+
+function splitTopLevelSuggestionAlternatives(value: string): string[] {
+	const parts: string[] = []
+	let current = ""
+	let isEscaped = false
+	let characterClassDepth = 0
+	let groupDepth = 0
+
+	for (const char of value) {
+		if (isEscaped) {
+			current += char
+			isEscaped = false
+			continue
+		}
+		if (char === "\\") {
+			current += char
+			isEscaped = true
+			continue
+		}
+		if (char === "[") {
+			characterClassDepth++
+			current += char
+			continue
+		}
+		if (char === "]" && characterClassDepth > 0) {
+			characterClassDepth--
+			current += char
+			continue
+		}
+		if (characterClassDepth === 0 && char === "(") {
+			groupDepth++
+			current += char
+			continue
+		}
+		if (characterClassDepth === 0 && char === ")" && groupDepth > 0) {
+			groupDepth--
+			current += char
+			continue
+		}
+		if (characterClassDepth === 0 && groupDepth === 0 && char === "|") {
+			parts.push(current)
+			current = ""
+			continue
+		}
+		current += char
+	}
+	parts.push(current)
+	return parts
+}
+
+export function getReplacementSuggestionLookupTerms(original: string, isRegex: boolean): string[] {
+	const terms = new Map<string, string>()
+	const addTerm = (value: string) => {
+		const term = value.replace(/\s+/g, " ").trim()
+		if (term.length >= 2) {
+			terms.set(term.toLocaleLowerCase(), term)
+		}
+	}
+
+	if (!isRegex) {
+		addTerm(original)
+		original.split(/[\n,;|/]+/).forEach(addTerm)
+		return Array.from(terms.values())
+	}
+
+	for (const fragment of splitTopLevelSuggestionAlternatives(original)) {
+		const strippedFragment = stripSuggestionRegexSyntax(fragment)
+		addTerm(strippedFragment)
+		strippedFragment.split(/[,;\n]+/).forEach(addTerm)
+	}
+	stripSuggestionRegexSyntax(original)
+		.split(/[|,;\n]+/)
+		.forEach(addTerm)
+	addTerm(original)
+
+	return Array.from(terms.values())
+}
+
+function getCandidateLookupValues(candidate: DiscoveredTermCandidate): string[] {
+	return textValuesFromArray([candidate.term, candidate.replacement, ...(candidate.replacementSuggestions || [])], MAX_REPLACEMENT_LENGTH)
+}
+
+interface RawLookupFallbackContext {
+	rawId?: string | number | null
+	lang?: string | null
+}
+
+function normalizeSuggestionComparable(value: string, caseSensitive: boolean): string {
+	const normalized = value
+		.replace(/[\p{Pd}_/]+/gu, " ")
+		.replace(/[^\p{L}\p{M}\p{N}]+/gu, " ")
+		.replace(/\s+/g, " ")
+		.trim()
+	return caseSensitive ? normalized : normalized.toLocaleLowerCase()
+}
+
+function suggestionValuesMatch(lookupTerm: string, candidateValue: string, caseSensitive: boolean): boolean {
+	const normalizedLookupTerm = caseSensitive ? lookupTerm : lookupTerm.toLocaleLowerCase()
+	const normalizedCandidateValue = caseSensitive ? candidateValue : candidateValue.toLocaleLowerCase()
+	if (normalizedCandidateValue === normalizedLookupTerm) {
+		return true
+	}
+
+	const comparableLookupTerm = normalizeSuggestionComparable(lookupTerm, caseSensitive)
+	const comparableCandidateValue = normalizeSuggestionComparable(candidateValue, caseSensitive)
+	if (!comparableLookupTerm || !comparableCandidateValue) {
+		return false
+	}
+	if (comparableCandidateValue === comparableLookupTerm) {
+		return true
+	}
+
+	return comparableLookupTerm.length >= 5 && comparableCandidateValue.includes(comparableLookupTerm)
+}
+
+function buildRawLookupFallbackCandidate(
+	lookupTerm: string,
+	fallbackContext?: RawLookupFallbackContext,
+): DiscoveredTermCandidate | null {
+	const rawId = sanitizeIdentifier(fallbackContext?.rawId)
+	const lang = sanitizeLang(fallbackContext?.lang, "en")
+	const term = sanitizeApiText(lookupTerm)
+	if (!rawId || !term || !CJK_PATTERN.test(term)) {
+		return null
+	}
+	return {
+		term,
+		source: "novel",
+		count: 0,
+		sourceId: `${WTR_SOURCE_ID_PREFIX}raw.${rawId}`,
+		hash: term,
+		lang,
+		sourceLabel: "Raw Lookup",
+	}
+}
+
+export function selectReplacementSuggestionCandidates(
+	candidates: DiscoveredTermCandidate[],
+	lookupTerms: string[],
+	isRegex: boolean,
+	caseSensitive: boolean,
+	limit = 20,
+	fallbackContext?: RawLookupFallbackContext,
+): DiscoveredTermCandidate[] {
+	const selected = new Map<string, DiscoveredTermCandidate>()
+	const addCandidate = (candidate: DiscoveredTermCandidate): boolean => {
+		if (selected.size >= limit) {
+			return false
+		}
+		const key = candidate.term.toLocaleLowerCase()
+		const wasMissing = !selected.has(key)
+		selected.set(key, candidate)
+		return wasMissing
+	}
+	const dedupedLookupTerms = Array.from(
+		new Map(
+			lookupTerms
+				.map((term) => term.replace(/\s+/g, " ").trim())
+				.filter(Boolean)
+				.map((term) => [term.toLocaleLowerCase(), term]),
+		).values(),
+	)
+
+	for (const lookupTerm of dedupedLookupTerms) {
+		let matchedCurrentLookupTerm = false
+		for (const candidate of candidates) {
+			if (getCandidateLookupValues(candidate).some((value) => suggestionValuesMatch(lookupTerm, value, caseSensitive))) {
+				matchedCurrentLookupTerm = addCandidate(candidate) || matchedCurrentLookupTerm
+			}
+		}
+
+		if (isRegex) {
+			try {
+				const regex = new RegExp(lookupTerm, caseSensitive ? "" : "i")
+				for (const candidate of candidates) {
+					if (getCandidateLookupValues(candidate).some((value) => regex.test(value))) {
+						matchedCurrentLookupTerm = addCandidate(candidate) || matchedCurrentLookupTerm
+					}
+				}
+			} catch (_error) {
+				// Invalid in-progress regex input still gets literal/variant suggestions from extracted terms.
+			}
+		}
+
+		if (!matchedCurrentLookupTerm) {
+			const fallbackCandidate = buildRawLookupFallbackCandidate(lookupTerm, fallbackContext)
+			if (fallbackCandidate) {
+				addCandidate(fallbackCandidate)
+			}
+		}
+	}
+
+	return Array.from(selected.values()).slice(0, limit)
 }
 
 export function isReplacementSuggestionRequestCurrent(

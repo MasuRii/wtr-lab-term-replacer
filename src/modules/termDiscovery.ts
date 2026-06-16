@@ -15,6 +15,7 @@ interface CacheEntry<T> {
 const TERM_SUGGESTION_CACHE_PREFIX = "wtr_lab_term_suggestion_cache_v1_"
 const NOVEL_TERMS_CACHE_TTL_MS = 60 * 60 * 1000
 const PREFERENCES_CACHE_TTL_MS = 6 * 60 * 60 * 1000
+const NOVEL_TERMS_DISCOVERY_LIMIT = 2000
 
 function getReaderContext(): ReaderUrlContext {
 	return getReaderContextFromPath(window.location.pathname)
@@ -87,7 +88,7 @@ export async function loadNovelTermEntries(forceRefresh = false): Promise<Discov
 	}
 
 	const apiPayload = await fetchJson(buildTermsApiUrl(context.rawId, forceRefresh))
-	const candidates = parseNovelTermEntries(apiPayload, context.lang, 200)
+	const candidates = parseNovelTermEntries(apiPayload, context.lang, NOVEL_TERMS_DISCOVERY_LIMIT)
 	await writeCache(cacheKey, candidates)
 	return candidates
 }

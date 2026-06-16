@@ -35,11 +35,13 @@ function compileTsModule(relativePath) {
 compileTsModule("src/modules/config.ts")
 const helpers = compileTsModule("src/modules/termDiscoveryHelpers.ts")
 const utils = compileTsModule("src/modules/utils.ts")
+const termDiscovery = compileTsModule("src/modules/termDiscovery.ts")
 const {
 	buildReaderGetPayload,
 	buildTermsApiUrl,
 	extractCurrentChapterCandidates,
 	getDiscoveryCandidateKey,
+	getReplacementSuggestionLookupTerms,
 	getSuggestionPresenceLabelsFromValues,
 	isReplacementSuggestionRequestCurrent,
 	loadReplacementSuggestionBatches,
@@ -48,9 +50,15 @@ const {
 	parseNovelTermEntries,
 	parseReplacementPreferences,
 	sanitizeApiText,
+	selectReplacementSuggestionCandidates,
 	shouldDisplaySuggestionCount,
 } = helpers
 const { getReaderContextFromPath } = utils
+const { loadNovelTermEntries } = termDiscovery
+
+const handlersSource = fs.readFileSync(path.join(root, "src/modules/handlers.ts"), "utf8")
+assert.match(handlersSource, /loadReplacementSuggestions\(candidate,\s*forceRefreshSuggestions\)/)
+assert.match(handlersSource, /updateReplacementSuggestionsForCandidates\([\s\S]*?true,\s*getOriginalInputFieldSuggestions/)
 
 assert.equal(sanitizeApiText("  Alice\n\t  Liddell  "), "Alice Liddell")
 assert.equal(sanitizeApiText(""), null)
@@ -207,6 +215,34 @@ assert.deepEqual(duplicateGlossaryTerms[0].replacementSuggestions, ["Song Shuhan
 assert.equal(duplicateGlossaryTerms[0].count, 20)
 assert.equal(duplicateGlossaryTerms[0].sourceLabel, "Raw")
 
+const replacementAliasTerms = parseNovelTermEntries(
+	{
+		glossaries: [
+			{
+				data: {
+					type: "raw",
+					id: 31,
+					replacements: [[['Venerable Bai', 'Venerable White', 'Bai Zunzhe'], "白尊者"]],
+				},
+			},
+		],
+	},
+	"en",
+)
+assert.deepEqual(replacementAliasTerms, [
+	{
+		term: "白尊者",
+		replacement: "Venerable Bai",
+		replacementSuggestions: ["Venerable Bai", "Venerable White", "Bai Zunzhe"],
+		source: "novel",
+		count: 0,
+		sourceId: "id.raw.31",
+		hash: "白尊者",
+		lang: "en",
+		sourceLabel: "Raw",
+	},
+])
+
 const aiGlossaryTerms = parseNovelTermEntries(
 	{
 		glossaries: [
@@ -286,6 +322,57 @@ assert.deepEqual(mergedSuggestions.slice(0, 4), [
 assert.equal(shouldDisplaySuggestionCount({ replacement: "Sam", count: 20, sourceLabel: "WTR" }), true)
 assert.equal(shouldDisplaySuggestionCount({ replacement: "Source", count: 20, sourceLabel: "Source" }), false)
 
+assert.deepEqual(getReplacementSuggestionLookupTerms("Seven-Lives Talisman Sovereign|Palace Master Qisheng Fu|Qisheng Fu", true).slice(0, 3), [
+	"Seven-Lives Talisman Sovereign",
+	"Palace Master Qisheng Fu",
+	"Qisheng Fu",
+])
+
+const pipePrioritizedCandidates = selectReplacementSuggestionCandidates(
+	[
+		{ term: "高频", replacement: "Qisheng Fu Extra", source: "novel", count: 99 },
+		{ term: "七生符府主", replacement: "Palace Master Qisheng Fu", source: "novel", count: 1 },
+		{ term: "另一个", replacement: "Seven-Lives Talisman Sovereign", source: "novel", count: 50 },
+	],
+	["Seven-Lives Talisman Sovereign", "Palace Master Qisheng Fu", "Qisheng Fu"],
+	true,
+	false,
+	2,
+)
+assert.deepEqual(
+	pipePrioritizedCandidates.map((candidate) => candidate.term),
+	["另一个", "七生符府主"],
+)
+
+const normalizedTokenCandidates = selectReplacementSuggestionCandidates(
+	[{ term: "法宝", replacement: "Seven Lives Talisman Sovereign", source: "novel", count: 7 }],
+	["Seven-Lives Talisman Sovereign"],
+	true,
+	false,
+	20,
+)
+assert.deepEqual(normalizedTokenCandidates.map((candidate) => candidate.term), ["法宝"])
+
+const cjkFallbackCandidates = selectReplacementSuggestionCandidates(
+	[],
+	["白尊者"],
+	true,
+	false,
+	20,
+	{ rawId: "31", lang: "en" },
+)
+assert.deepEqual(cjkFallbackCandidates, [
+	{
+		term: "白尊者",
+		source: "novel",
+		count: 0,
+		sourceId: "id.raw.31",
+		hash: "白尊者",
+		lang: "en",
+		sourceLabel: "Raw Lookup",
+	},
+])
+
 const refreshedSuggestions = mergeRefreshReplacementSuggestions({
 	existingSuggestions: [{ replacement: "Old Term Suggestion", count: 9, sourceLabel: "API", sourceRank: 40 }],
 	seedSuggestions: [],
@@ -296,6 +383,44 @@ assert.deepEqual(
 	refreshedSuggestions.map((suggestion) => suggestion.replacement),
 	["New Term", "New Term Suggestion"],
 )
+
+async function testLoadNovelTermEntriesKeepsFullCatalog() {
+	const previousWindow = global.window
+	const previousDocument = global.document
+	const previousFetch = global.fetch
+	const previousGetValue = global.GM_getValue
+	const previousSetValue = global.GM_setValue
+	try {
+		global.window = { location: { pathname: "/en/novel/31/cultivation-chat-group/chapter-1" } }
+		global.document = { querySelector: () => null }
+		global.GM_getValue = async () => null
+		global.GM_setValue = async () => undefined
+		global.fetch = async () => ({
+			ok: true,
+			json: async () => ({
+				glossaries: [
+					{
+						data: {
+							type: "raw",
+							id: 31,
+							terms: Array.from({ length: 250 }, (_item, index) => [[`Term ${index}`], `源${index}`, 0, 0, index + 1]),
+						},
+					},
+				],
+			}),
+		})
+
+		const loadedTerms = await loadNovelTermEntries(true)
+		assert.equal(loadedTerms.length, 250)
+		assert.equal(loadedTerms.some((candidate) => candidate.term === "源249"), true)
+	} finally {
+		global.window = previousWindow
+		global.document = previousDocument
+		global.fetch = previousFetch
+		global.GM_getValue = previousGetValue
+		global.GM_setValue = previousSetValue
+	}
+}
 
 async function testProgressiveSuggestionBatches() {
 	let resolveFirst
@@ -329,7 +454,8 @@ async function testProgressiveSuggestionBatches() {
 	])
 }
 
-testProgressiveSuggestionBatches()
+testLoadNovelTermEntriesKeepsFullCatalog()
+	.then(testProgressiveSuggestionBatches)
 	.then(() => console.log("termDiscoveryHelpers tests passed"))
 	.catch((error) => {
 		console.error(error)

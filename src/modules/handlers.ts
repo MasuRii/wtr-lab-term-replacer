@@ -26,14 +26,16 @@ import {
 } from "./ui"
 import { reprocessCurrentChapter } from "./observer"
 import { computeDupGroups, updateDupModeAfterChange } from "./duplicates"
-import { findChapterBodyForUrl, log } from "./utils"
+import { findChapterBodyForUrl, getReaderContextFromPath, log } from "./utils"
 import { performReplacements, revertAllReplacements } from "./engine"
 import {
 	DiscoveredTermCandidate,
 	ReplacementSuggestion,
+	getReplacementSuggestionLookupTerms,
 	getSuggestionPresenceLabelsFromValues,
 	loadReplacementSuggestionBatches,
 	mergeRefreshReplacementSuggestions,
+	selectReplacementSuggestionCandidates,
 	shouldDisplaySuggestionCount,
 } from "./termDiscoveryHelpers"
 import {
@@ -273,97 +275,6 @@ function getOriginalInputOptions() {
 	}
 }
 
-function stripRegexSyntax(fragment: string): string {
-	return fragment
-		.replace(/\\[bBAZzG]/g, " ")
-		.replace(/\\s[+*?]?/g, " ")
-		.replace(/\\[dDwW][+*?]?/g, " ")
-		.replace(/\[([^\]\\]+)\][+*?]?/g, (_match, chars) => chars.match(/[\p{L}\p{M}\p{N}'-]/u)?.[0] || " ")
-		.replace(/\(\?[:=!<][^)]*\)/g, " ")
-		.replace(/[()]/g, " ")
-		.replace(/[{}+*?^$]/g, " ")
-		.replace(/\\(.)/g, "$1")
-		.replace(/\s+/g, " ")
-		.trim()
-}
-
-function splitTopLevelAlternatives(value: string): string[] {
-	const parts: string[] = []
-	let current = ""
-	let isEscaped = false
-	let characterClassDepth = 0
-	let groupDepth = 0
-
-	for (const char of value) {
-		if (isEscaped) {
-			current += char
-			isEscaped = false
-			continue
-		}
-		if (char === "\\") {
-			current += char
-			isEscaped = true
-			continue
-		}
-		if (char === "[") {
-			characterClassDepth++
-			current += char
-			continue
-		}
-		if (char === "]" && characterClassDepth > 0) {
-			characterClassDepth--
-			current += char
-			continue
-		}
-		if (characterClassDepth === 0 && char === "(") {
-			groupDepth++
-			current += char
-			continue
-		}
-		if (characterClassDepth === 0 && char === ")" && groupDepth > 0) {
-			groupDepth--
-			current += char
-			continue
-		}
-		if (characterClassDepth === 0 && groupDepth === 0 && char === "|") {
-			parts.push(current)
-			current = ""
-			continue
-		}
-		current += char
-	}
-	parts.push(current)
-	return parts
-}
-
-function getSuggestionLookupTerms(original: string, isRegex: boolean): string[] {
-	const terms = new Map<string, string>()
-	const addTerm = (value: string) => {
-		const term = value.replace(/\s+/g, " ").trim()
-		if (term.length >= 2) {
-			terms.set(term.toLocaleLowerCase(), term)
-		}
-	}
-
-	addTerm(original)
-	const splitPattern = isRegex ? /[\n,;]+/ : /[\n,;|/]+/
-	original.split(splitPattern).forEach(addTerm)
-
-	if (isRegex) {
-		for (const fragment of splitTopLevelAlternatives(original)) {
-			addTerm(stripRegexSyntax(fragment))
-			stripRegexSyntax(fragment)
-				.split(/[|,;\n]+/)
-				.forEach(addTerm)
-		}
-		stripRegexSyntax(original)
-			.split(/[|,;\n]+/)
-			.forEach(addTerm)
-	}
-
-	return Array.from(terms.values())
-}
-
 function findNovelCandidatesByOriginalInput(
 	original: string,
 	isRegex: boolean,
@@ -371,39 +282,9 @@ function findNovelCandidatesByOriginalInput(
 ): DiscoveredTermCandidate[] {
 	const discovery = ensureDiscoveryState()
 	const novelTerms = discovery.novelTerms as DiscoveredTermCandidate[]
-	const deduped = new Map<string, DiscoveredTermCandidate>()
-	const lookupTerms = getSuggestionLookupTerms(original, isRegex)
-	const lookupSet = new Set(lookupTerms.map((term) => (caseSensitive ? term : term.toLocaleLowerCase())))
-	const addCandidate = (candidate: DiscoveredTermCandidate) => {
-		deduped.set(candidate.term.toLocaleLowerCase(), candidate)
-	}
-	const getCandidateLookupValues = (candidate: DiscoveredTermCandidate): string[] => [
-		candidate.term,
-		...(candidate.replacement ? [candidate.replacement] : []),
-		...(candidate.replacementSuggestions || []),
-	]
-
-	for (const candidate of novelTerms) {
-		const candidateValues = getCandidateLookupValues(candidate).map((value) => (caseSensitive ? value : value.toLocaleLowerCase()))
-		if (candidateValues.some((candidateValue) => lookupSet.has(candidateValue))) {
-			addCandidate(candidate)
-		}
-	}
-
-	if (isRegex) {
-		try {
-			const regex = new RegExp(original, caseSensitive ? "" : "i")
-			for (const candidate of novelTerms) {
-				if (getCandidateLookupValues(candidate).some((value) => regex.test(value))) {
-					addCandidate(candidate)
-				}
-			}
-		} catch (_error) {
-			// Invalid in-progress regex input still gets literal/variant suggestions from extracted terms.
-		}
-	}
-
-	return Array.from(deduped.values()).slice(0, 10)
+	const lookupTerms = getReplacementSuggestionLookupTerms(original, isRegex)
+	const readerContext = getReaderContextFromPath(window.location.pathname)
+	return selectReplacementSuggestionCandidates(novelTerms, lookupTerms, isRegex, caseSensitive, 20, readerContext)
 }
 
 let replacementSuggestionRequestId = 0
@@ -429,6 +310,7 @@ async function updateReplacementSuggestionsForCandidates(
 	candidates: DiscoveredTermCandidate[],
 	inputValue: string,
 	mergeExisting = false,
+	forceRefreshSuggestions = false,
 	seedSuggestions: ReplacementSuggestion[] = [],
 ) {
 	const discovery = ensureDiscoveryState()
@@ -470,7 +352,7 @@ async function updateReplacementSuggestionsForCandidates(
 				return [] as ReplacementSuggestion[]
 			}
 			try {
-				return await loadReplacementSuggestions(candidate)
+				return await loadReplacementSuggestions(candidate, forceRefreshSuggestions)
 			} catch (error) {
 				log(state.globalSettings, "WTR Term Replacer: Replacement suggestions unavailable", error)
 				return [] as ReplacementSuggestion[]
@@ -519,7 +401,7 @@ export function handleReplacementSuggestionInput(event) {
 		const discovery = ensureDiscoveryState()
 		const fieldSuggestions = getOriginalInputFieldSuggestions(query, options.isRegex)
 		if (!query) {
-			updateReplacementSuggestionsForCandidates([], query, mergeExisting, fieldSuggestions)
+			updateReplacementSuggestionsForCandidates([], query, mergeExisting, false, fieldSuggestions)
 			return
 		}
 		if ((discovery.novelTerms as DiscoveredTermCandidate[]).length === 0) {
@@ -533,6 +415,7 @@ export function handleReplacementSuggestionInput(event) {
 			findNovelCandidatesByOriginalInput(query, options.isRegex, options.caseSensitive),
 			query,
 			mergeExisting,
+			false,
 			fieldSuggestions,
 		)
 	}, 250)
@@ -557,6 +440,7 @@ export async function handleRefreshSuggestionsClick() {
 			findNovelCandidatesByOriginalInput(options.value, options.isRegex, options.caseSensitive),
 			options.value,
 			false,
+			true,
 			getOriginalInputFieldSuggestions(options.value, options.isRegex),
 		)
 	} catch (error) {
