@@ -11,7 +11,7 @@ Replace terms and names in WTR Lab chapters with your preferred wording.
 ## Current Version
 
 - Package: `wtr-lab-term-replacer-webpack`
-- Version: `5.7.2`
+- Version: `5.7.3`
 
 ## Usage
 

@@ -8,6 +8,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 No unreleased changes.
 
+## [5.7.3] - 2026-06-17
+
+### Added
+- Added smarter Refresh Suggestions candidate discovery with full-catalog lookup, replacement alias parsing, CJK raw-term fallback candidates, and normalized token matching.
+
+### Changed
+- Refresh Suggestions now bypasses cached preference suggestions and checks up to 20 prioritized candidates from regex pipe alternatives.
+
 ## [5.7.2] - 2026-06-08
 
 ### Added

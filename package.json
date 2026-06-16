@@ -1,6 +1,6 @@
 {
 	"name": "wtr-lab-term-replacer-webpack",
-	"version": "5.7.2",
+	"version": "5.7.3",
 	"description": "A modular, Webpack-powered TypeScript version of the WTR Lab Term Replacer userscript.",
 	"author": "MasuRii",
 	"license": "MIT",

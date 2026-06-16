@@ -1,6 +1,6 @@
 # WTR Lab Term Replacer
 
-[![Version](https://img.shields.io/badge/version-5.7.2-blue.svg)](https://github.com/MasuRii/wtr-lab-term-replacer-webpack/releases)
+[![Version](https://img.shields.io/badge/version-5.7.3-blue.svg)](https://github.com/MasuRii/wtr-lab-term-replacer-webpack/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/MasuRii/wtr-lab-term-replacer-webpack/blob/main/LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-6.0-blue?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Built with Webpack](https://img.shields.io/badge/Built%20with-Webpack-8DD6F9?logo=webpack&logoColor=white)](https://webpack.js.org/)
@@ -118,7 +118,7 @@ All saved term data stays in your browser through the userscript manager's stora
 
 ## Versioning
 
-The current version is **v5.7.2**. Version info is kept in `config/versions.js`, and `npm run version:update` syncs it across the package metadata and generated source files.
+The current version is **v5.7.3**. Version info is kept in `config/versions.js`, and `npm run version:update` syncs it across the package metadata and generated source files.
 
 See [CHANGELOG.md](CHANGELOG.md) for the full release history.
 
