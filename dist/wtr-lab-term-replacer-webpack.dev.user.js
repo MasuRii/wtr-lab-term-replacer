@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name WTR Lab Term Replacer [DEV]
 // @description A modular, Webpack-powered TypeScript version of the WTR Lab Term Replacer userscript.
-// @version 5.7.2-dev.1780938650134
+// @version 5.7.2-dev.1781628541913
 // @author MasuRii
 // @homepage https://github.com/MasuRii/wtr-lab-term-replacer-webpack#readme
 // @supportURL https://github.com/MasuRii/wtr-lab-term-replacer-webpack/issues
@@ -644,6 +644,8 @@ const HTML_TAG_PATTERN = /<[^>]*>/g;
 const HTML_ENTITY_PATTERN = /&(?:nbsp|amp|lt|gt|quot|#39);/gi;
 const SAFE_IDENTIFIER_PATTERN = /^[A-Za-z0-9_.:-]{1,80}$/;
 const WTR_SOURCE_ID_PREFIX = "id.";
+const TERMS_REFRESH_PARAM = "_wtr_refresh";
+let termsRefreshCounter = 0;
 const COMMON_WORDS = new Set([
     "A",
     "An",
@@ -738,6 +740,14 @@ function sanitizeTranslateService(value) {
     const sanitized = sanitizeApiText(value, 20);
     return sanitized && /^[a-z][a-z0-9_-]{0,19}$/i.test(sanitized) ? sanitized : "ai";
 }
+function buildTermsApiUrl(rawId, forceRefresh = false) {
+    const baseUrl = `/api/v2/reader/terms/${encodeURIComponent(String(rawId))}.json`;
+    if (!forceRefresh) {
+        return baseUrl;
+    }
+    termsRefreshCounter = (termsRefreshCounter + 1) % 1000;
+    return `${baseUrl}?${TERMS_REFRESH_PARAM}=${Date.now() * 1000 + termsRefreshCounter}`;
+}
 function buildReaderGetPayload(context, translateService = "ai") {
     const rawId = parsePositiveInteger(context.rawId);
     const chapterNoSource = context.chapterNo ?? context.chapterSlug;
@@ -808,6 +818,25 @@ function isRecord(value) {
 function isWtrTermTuple(value) {
     return Array.isArray(value) && Array.isArray(value[0]) && (typeof value[1] === "string" || typeof value[1] === "number");
 }
+function getGlossarySourceLabel(entry, inheritedSourceLabel) {
+    const data = isRecord(entry.data) ? entry.data : null;
+    const explicitSourceLabel = sanitizeApiText(entry.source_label ?? entry.sourceLabel, 40);
+    if (explicitSourceLabel) {
+        return explicitSourceLabel;
+    }
+    if (isRecord(data?.ai_run) || data?.build != null) {
+        return "AI Glossary";
+    }
+    const sourceType = sanitizeIdentifier(data?.type ?? entry.type);
+    if (sourceType === "generic") {
+        const title = sanitizeApiText(entry.title ?? data?.title, 40);
+        return title ? `Generic: ${title}` : inheritedSourceLabel || "Generic";
+    }
+    if (sourceType === "raw") {
+        return inheritedSourceLabel || "Raw";
+    }
+    return inheritedSourceLabel;
+}
 function getGlossarySourceId(entry) {
     const explicitSourceId = sanitizeIdentifier(entry.source_id ?? entry.sourceId);
     if (explicitSourceId) {
@@ -821,27 +850,28 @@ function getGlossarySourceId(entry) {
     }
     return `${WTR_SOURCE_ID_PREFIX}${sourceType}.${sourceId}`;
 }
-function collectNovelTermEntries(payload, fallbackLang, sourceId) {
+function collectNovelTermEntries(payload, fallbackLang, sourceId, sourceLabel) {
     if (isWtrTermTuple(payload)) {
-        return [{ item: payload, sourceId, lang: fallbackLang }];
+        return [{ item: payload, sourceId, sourceLabel, lang: fallbackLang }];
     }
     if (Array.isArray(payload)) {
-        return payload.flatMap((item) => collectNovelTermEntries(item, fallbackLang, sourceId));
+        return payload.flatMap((item) => collectNovelTermEntries(item, fallbackLang, sourceId, sourceLabel));
     }
     if (!isRecord(payload)) {
         return [];
     }
     const localSourceId = getGlossarySourceId(payload) || sourceId;
+    const localSourceLabel = getGlossarySourceLabel(payload, sourceLabel);
     const localLang = sanitizeLang(payload.lang ?? payload.language, fallbackLang);
     const directTerm = firstTextValue(payload, ["source", "original", "source_text", "sourceText", "from", "term", "raw", "name"]);
     if (directTerm) {
-        return [{ item: payload, sourceId: localSourceId, lang: localLang }];
+        return [{ item: payload, sourceId: localSourceId, sourceLabel: localSourceLabel, lang: localLang }];
     }
     const nestedEntries = [];
     for (const fieldName of ["glossaries", "data", "terms", "items", "results", "sources"]) {
         const value = payload[fieldName];
         if (value && (Array.isArray(value) || typeof value === "object")) {
-            nestedEntries.push(...collectNovelTermEntries(value, localLang, localSourceId));
+            nestedEntries.push(...collectNovelTermEntries(value, localLang, localSourceId, localSourceLabel));
         }
     }
     return nestedEntries;
@@ -921,10 +951,34 @@ function extractCurrentChapterCandidates(readerPayload, existingTerms = new Set(
     }
     return rankChapterTermCandidates(text, existingTerms, limit);
 }
+function getReplacementValues(candidate) {
+    return textValuesFromArray([candidate.replacement, ...(candidate.replacementSuggestions || [])], MAX_REPLACEMENT_LENGTH);
+}
+function mergeNovelTermCandidate(previous, candidate) {
+    const preferred = candidate.count > previous.count || (!previous.hash && candidate.hash) ? candidate : previous;
+    const replacementValues = textValuesFromArray([...getReplacementValues(previous), ...getReplacementValues(candidate)], MAX_REPLACEMENT_LENGTH);
+    const merged = {
+        ...preferred,
+        count: Math.max(previous.count, candidate.count),
+    };
+    if (replacementValues.length > 0) {
+        merged.replacement = replacementValues[0];
+    }
+    else {
+        delete merged.replacement;
+    }
+    if (replacementValues.length > 1) {
+        merged.replacementSuggestions = replacementValues;
+    }
+    else {
+        delete merged.replacementSuggestions;
+    }
+    return merged;
+}
 function parseNovelTermEntries(payload, lang = "en", limit = MAX_RESULTS) {
     const deduped = new Map();
     const entries = collectNovelTermEntries(payload, sanitizeLang(lang));
-    for (const { item, sourceId: inheritedSourceId, lang: entryLang } of entries) {
+    for (const { item, sourceId: inheritedSourceId, sourceLabel, lang: entryLang } of entries) {
         let term = null;
         let replacement = null;
         let replacementSuggestions = [];
@@ -969,11 +1023,15 @@ function parseNovelTermEntries(payload, lang = "en", limit = MAX_RESULTS) {
             sourceId,
             hash,
             lang: candidateLang,
+            ...(sourceLabel ? { sourceLabel } : {}),
         };
         const mapKey = term.toLocaleLowerCase();
         const previous = deduped.get(mapKey);
-        if (!previous || candidate.count > previous.count || (!previous.hash && candidate.hash)) {
+        if (!previous) {
             deduped.set(mapKey, candidate);
+        }
+        else {
+            deduped.set(mapKey, mergeNovelTermCandidate(previous, candidate));
         }
     }
     return Array.from(deduped.values())
@@ -988,6 +1046,115 @@ function getDiscoveryCandidateKey(candidate) {
 }
 function isReplacementSuggestionRequestCurrent(requestId, latestRequestId, candidateKey, selectedCandidateKey, inputValue, currentInputValue) {
     return requestId === latestRequestId && candidateKey === selectedCandidateKey && inputValue === currentInputValue;
+}
+function normalizeReplacementSuggestion(replacement, count = 0, sourceLabel = "", sourceRank = 50) {
+    const normalizedReplacement = replacement.replace(/\s+/g, " ").trim();
+    if (!normalizedReplacement) {
+        return null;
+    }
+    return { replacement: normalizedReplacement, count, sourceLabel, sourceRank };
+}
+function mergeSuggestionLabels(existingLabel = "", newLabel = "") {
+    const labels = new Set([...existingLabel.split(" + "), ...newLabel.split(" + ")].map((label) => label.trim()).filter(Boolean));
+    return Array.from(labels).join(" + ");
+}
+function getSuggestionSourcePriority(suggestion) {
+    const sourceLabel = (suggestion.sourceLabel || "").toLowerCase();
+    return sourceLabel.includes("wtr") && sourceLabel.includes("api") ? -1 : 0;
+}
+function dedupeReplacementSuggestions(suggestions) {
+    const deduped = new Map();
+    suggestions.forEach((suggestion) => {
+        const normalized = normalizeReplacementSuggestion(suggestion.replacement, suggestion.count, suggestion.sourceLabel, suggestion.sourceRank);
+        if (!normalized) {
+            return;
+        }
+        const key = normalized.replacement;
+        const existing = deduped.get(key);
+        if (!existing) {
+            deduped.set(key, normalized);
+            return;
+        }
+        existing.count = Math.max(existing.count, normalized.count);
+        existing.sourceRank = Math.min(existing.sourceRank ?? 50, normalized.sourceRank ?? 50);
+        existing.sourceLabel = mergeSuggestionLabels(existing.sourceLabel, normalized.sourceLabel);
+    });
+    return Array.from(deduped.values()).sort((a, b) => (a.sourceRank ?? 50) - (b.sourceRank ?? 50) ||
+        getSuggestionSourcePriority(a) - getSuggestionSourcePriority(b) ||
+        b.count - a.count ||
+        a.replacement.localeCompare(b.replacement));
+}
+function mergeReplacementSuggestionsForCandidates(candidates, suggestions) {
+    const mergedSuggestions = [];
+    for (const candidate of candidates) {
+        mergedSuggestions.push({
+            replacement: candidate.term,
+            count: candidate.count,
+            sourceLabel: "Source",
+            sourceRank: -10,
+        });
+        const candidateReplacements = candidate.replacementSuggestions?.length
+            ? candidate.replacementSuggestions
+            : candidate.replacement
+                ? [candidate.replacement]
+                : [];
+        candidateReplacements.forEach((replacement) => {
+            mergedSuggestions.push({
+                replacement,
+                count: candidate.count,
+                sourceLabel: candidate.sourceLabel || "WTR",
+                sourceRank: 30,
+            });
+        });
+    }
+    mergedSuggestions.push(...suggestions.map((suggestion) => ({
+        ...suggestion,
+        sourceLabel: suggestion.sourceLabel || "API",
+        sourceRank: suggestion.sourceRank ?? 40,
+    })));
+    return dedupeReplacementSuggestions(mergedSuggestions);
+}
+function normalizeSuggestionPresenceToken(value) {
+    return value.replace(/\s+/g, " ").trim().toLocaleLowerCase();
+}
+function getSuggestionPresenceTokens(value) {
+    return new Set(value
+        .split(/\s*(?:\||\/|,|;|\n)\s*/)
+        .map(normalizeSuggestionPresenceToken)
+        .filter(Boolean));
+}
+function getSuggestionPresenceLabelsFromValues(suggestion, originalValue, replacementValue) {
+    const labels = [];
+    const normalizedSuggestion = normalizeSuggestionPresenceToken(suggestion);
+    if (!normalizedSuggestion) {
+        return labels;
+    }
+    if (getSuggestionPresenceTokens(originalValue).has(normalizedSuggestion)) {
+        labels.push("Original");
+    }
+    if (getSuggestionPresenceTokens(replacementValue).has(normalizedSuggestion)) {
+        labels.push("Replacement");
+    }
+    return labels;
+}
+function shouldDisplaySuggestionCount(suggestion) {
+    const sourceLabel = (suggestion.sourceLabel || "").toLowerCase();
+    return suggestion.count > 0 && /wtr|raw|generic|glossary|current|api|user|profile|preference|community/.test(sourceLabel);
+}
+function mergeRefreshReplacementSuggestions({ existingSuggestions, seedSuggestions, candidates, loadedSuggestions, mergeExisting = false, }) {
+    return dedupeReplacementSuggestions([
+        ...(mergeExisting ? existingSuggestions : []),
+        ...seedSuggestions,
+        ...mergeReplacementSuggestionsForCandidates(candidates, loadedSuggestions),
+    ]);
+}
+async function loadReplacementSuggestionBatches(candidates, loadSuggestions, onBatch) {
+    const batches = await Promise.all(candidates.map(async (candidate) => {
+        const suggestions = await loadSuggestions(candidate);
+        onBatch(candidate, suggestions);
+        return suggestions;
+    }));
+    return batches.flat();
 }
 function parseReplacementPreferences(payload, limit = 20) {
     const deduped = new Map();
@@ -1091,7 +1258,7 @@ async function loadNovelTermEntries(forceRefresh = false) {
             return cached;
         }
     }
-    const apiPayload = await fetchJson(`/api/v2/reader/terms/${encodeURIComponent(context.rawId)}.json`);
+    const apiPayload = await fetchJson(buildTermsApiUrl(context.rawId, forceRefresh));
     const candidates = parseNovelTermEntries(apiPayload, context.lang, 200);
     await writeCache(cacheKey, candidates);
     return candidates;
@@ -1124,6 +1291,7 @@ var versions = __webpack_require__(387);
 
 
 // Re-export saveTermListLocation for UI module
+
 
 
 
@@ -1168,28 +1336,19 @@ function ensureDiscoveryState() {
     }
     return state/* state */.wk.termDiscovery;
 }
-function getFieldSuggestionTokens(fieldId) {
-    const field = document.getElementById(fieldId);
-    return getExistingSuggestionTokens(field?.value || "");
-}
 function getSuggestionPresenceLabels(suggestion) {
-    const labels = [];
-    const originalTokens = getFieldSuggestionTokens("wtr-original");
-    const replacementTokens = getFieldSuggestionTokens("wtr-replacement");
-    if (originalTokens.has(suggestion)) {
-        labels.push("Original");
-    }
-    if (replacementTokens.has(suggestion)) {
-        labels.push("Replacement");
-    }
-    return labels;
+    const originalField = document.getElementById("wtr-original");
+    const replacementField = document.getElementById("wtr-replacement");
+    return getSuggestionPresenceLabelsFromValues(suggestion, originalField?.value || "", replacementField?.value || "");
 }
 function shouldShowSuggestionCount(suggestion) {
-    const sourceLabel = (suggestion.sourceLabel || "").toLowerCase();
-    return suggestion.count > 0 && /current|api|user|profile|preference/.test(sourceLabel);
+    return shouldDisplaySuggestionCount(suggestion);
+}
+function getDisplaySourceLabel(sourceLabel = "WTR") {
+    return sourceLabel === "API" ? "Community" : sourceLabel;
 }
 function getSuggestionVisualMeta(suggestion) {
-    const sourceLabel = suggestion.sourceLabel || "WTR";
+    const sourceLabel = getDisplaySourceLabel(suggestion.sourceLabel || "WTR");
     const normalizedSource = sourceLabel.toLowerCase();
     if (shouldShowSuggestionCount(suggestion)) {
         return { kind: "profile", icon: "profile", sourceLabel };
@@ -1239,9 +1398,16 @@ function renderReplacementSuggestions(suggestions, message = "") {
         const visualMeta = getSuggestionVisualMeta(suggestion);
         const displayCount = shouldShowSuggestionCount(suggestion) ? suggestion.count : 0;
         const metaParts = [visualMeta.sourceLabel, displayCount > 0 ? String(displayCount) : "", ...presenceLabels].filter(Boolean);
+        const presenceClasses = [
+            presenceLabels.length ? "wtr-suggestion-existing" : "",
+            presenceLabels.includes("Original") ? "wtr-suggestion-in-original" : "",
+            presenceLabels.includes("Replacement") ? "wtr-suggestion-in-replacement" : "",
+        ]
+            .filter(Boolean)
+            .join(" ");
         const button = document.createElement("button");
         button.type = "button";
-        button.className = `wtr-replacement-suggestion-btn wtr-suggestion-${visualMeta.kind}${presenceLabels.length ? " wtr-suggestion-existing" : ""}`;
+        button.className = `wtr-replacement-suggestion-btn wtr-suggestion-${visualMeta.kind}${presenceClasses ? ` ${presenceClasses}` : ""}`;
         button.dataset.replacement = suggestion.replacement;
         button.title = metaParts.join(" • ");
         const iconSegment = document.createElement("span");
@@ -1257,25 +1423,33 @@ function renderReplacementSuggestions(suggestions, message = "") {
         replacementLabel.className = "wtr-suggestion-label";
         replacementLabel.textContent = suggestion.replacement;
         button.appendChild(replacementLabel);
+        const sourceBadge = document.createElement("span");
+        sourceBadge.className = "wtr-suggestion-source-badge";
+        sourceBadge.textContent = visualMeta.sourceLabel;
+        button.appendChild(sourceBadge);
         buttonWrap.appendChild(button);
     });
     container.appendChild(buttonWrap);
 }
-function normalizeReplacementSuggestion(replacement, count = 0, sourceLabel = "", sourceRank = 50) {
+function handlers_normalizeReplacementSuggestion(replacement, count = 0, sourceLabel = "", sourceRank = 50) {
     const normalizedReplacement = replacement.replace(/\s+/g, " ").trim();
     if (!normalizedReplacement) {
         return null;
     }
     return { replacement: normalizedReplacement, count, sourceLabel, sourceRank };
 }
-function mergeSuggestionLabels(existingLabel = "", newLabel = "") {
+function handlers_mergeSuggestionLabels(existingLabel = "", newLabel = "") {
     const labels = new Set([...existingLabel.split(" + "), ...newLabel.split(" + ")].map((label) => label.trim()).filter(Boolean));
     return Array.from(labels).join(" + ");
 }
-function dedupeReplacementSuggestions(suggestions) {
+function handlers_getSuggestionSourcePriority(suggestion) {
+    const sourceLabel = (suggestion.sourceLabel || "").toLowerCase();
+    return sourceLabel.includes("wtr") && sourceLabel.includes("api") ? -1 : 0;
+}
+function handlers_dedupeReplacementSuggestions(suggestions) {
     const deduped = new Map();
     suggestions.forEach((suggestion) => {
-        const normalized = normalizeReplacementSuggestion(suggestion.replacement, suggestion.count, suggestion.sourceLabel, suggestion.sourceRank);
+        const normalized = handlers_normalizeReplacementSuggestion(suggestion.replacement, suggestion.count, suggestion.sourceLabel, suggestion.sourceRank);
         if (!normalized) {
             return;
         }
@@ -1287,15 +1461,16 @@ function dedupeReplacementSuggestions(suggestions) {
         }
         existing.count = Math.max(existing.count, normalized.count);
         existing.sourceRank = Math.min(existing.sourceRank ?? 50, normalized.sourceRank ?? 50);
-        existing.sourceLabel = mergeSuggestionLabels(existing.sourceLabel, normalized.sourceLabel);
+        existing.sourceLabel = handlers_mergeSuggestionLabels(existing.sourceLabel, normalized.sourceLabel);
     });
     return Array.from(deduped.values()).sort((a, b) => (a.sourceRank ?? 50) - (b.sourceRank ?? 50) ||
+        handlers_getSuggestionSourcePriority(a) - handlers_getSuggestionSourcePriority(b) ||
         b.count - a.count ||
         a.replacement.localeCompare(b.replacement));
 }
 function replacementSuggestionsFromValues(values, sourceLabel = "WTR", sourceRank = 50) {
-    return dedupeReplacementSuggestions(values
-        .map((value) => normalizeReplacementSuggestion(value, 0, sourceLabel, sourceRank))
+    return handlers_dedupeReplacementSuggestions(values
+        .map((value) => handlers_normalizeReplacementSuggestion(value, 0, sourceLabel, sourceRank))
         .filter((suggestion) => Boolean(suggestion)));
 }
 function getOriginalInputOptions() {
@@ -1427,36 +1602,6 @@ function findNovelCandidatesByOriginalInput(original, isRegex, caseSensitive) {
     }
     return Array.from(deduped.values()).slice(0, 10);
 }
-function mergeReplacementSuggestions(candidates, suggestions) {
-    const mergedSuggestions = [];
-    for (const candidate of candidates) {
-        mergedSuggestions.push({
-            replacement: candidate.term,
-            count: 0,
-            sourceLabel: "Source",
-            sourceRank: -10,
-        });
-        const candidateReplacements = candidate.replacementSuggestions?.length
-            ? candidate.replacementSuggestions
-            : candidate.replacement
-                ? [candidate.replacement]
-                : [];
-        candidateReplacements.forEach((replacement) => {
-            mergedSuggestions.push({
-                replacement,
-                count: 0,
-                sourceLabel: "WTR",
-                sourceRank: 30,
-            });
-        });
-    }
-    mergedSuggestions.push(...suggestions.map((suggestion) => ({
-        ...suggestion,
-        sourceLabel: suggestion.sourceLabel || "API",
-        sourceRank: suggestion.sourceRank ?? 40,
-    })));
-    return dedupeReplacementSuggestions(mergedSuggestions);
-}
 let replacementSuggestionRequestId = 0;
 let replacementSuggestionTimeout = null;
 let suppressNextReplacementSuggestionInput = false;
@@ -1470,7 +1615,7 @@ function getOriginalInputFieldSuggestions(value, isRegex) {
     }
     return normalizeOriginalRegexPattern(value)
         .split("|")
-        .map((part) => normalizeReplacementSuggestion(part, 0, "Field", 5))
+        .map((part) => handlers_normalizeReplacementSuggestion(part, 0, "Field", 5))
         .filter((suggestion) => Boolean(suggestion));
 }
 async function updateReplacementSuggestionsForCandidates(candidates, inputValue, mergeExisting = false, seedSuggestions = []) {
@@ -1479,12 +1624,28 @@ async function updateReplacementSuggestionsForCandidates(candidates, inputValue,
     discovery.selectedCandidate = candidates[0] || null;
     const requestId = ++replacementSuggestionRequestId;
     if (candidates.length === 0) {
-        const mergedExistingSuggestions = dedupeReplacementSuggestions([...existingSuggestions, ...seedSuggestions]);
+        const mergedExistingSuggestions = handlers_dedupeReplacementSuggestions([...existingSuggestions, ...seedSuggestions]);
         discovery.replacementSuggestions = mergedExistingSuggestions;
         renderReplacementSuggestions(mergedExistingSuggestions);
         return;
     }
-    const loadedSuggestions = await Promise.all(candidates.map(async (candidate) => {
+    const loadedSuggestions = [];
+    const renderMergedSuggestions = (isFinalRender = false) => {
+        if (!isActiveReplacementSuggestionRequest(requestId, inputValue)) {
+            return;
+        }
+        const mergedSuggestions = mergeRefreshReplacementSuggestions({
+            existingSuggestions,
+            seedSuggestions,
+            candidates,
+            loadedSuggestions,
+            mergeExisting,
+        });
+        discovery.replacementSuggestions = mergedSuggestions;
+        renderReplacementSuggestions(mergedSuggestions, isFinalRender && !mergedSuggestions.length ? "No replacement suggestions found for this original text." : "");
+    };
+    renderMergedSuggestions();
+    await loadReplacementSuggestionBatches(candidates, async (candidate) => {
         if (!hasPreferenceIdentifiers(candidate)) {
             return [];
         }
@@ -1495,17 +1656,11 @@ async function updateReplacementSuggestionsForCandidates(candidates, inputValue,
             (0,utils/* log */.Rm)(state/* state */.wk.globalSettings, "WTR Term Replacer: Replacement suggestions unavailable", error);
             return [];
         }
-    }));
-    if (!isActiveReplacementSuggestionRequest(requestId, inputValue)) {
-        return;
-    }
-    const mergedSuggestions = dedupeReplacementSuggestions([
-        ...existingSuggestions,
-        ...seedSuggestions,
-        ...mergeReplacementSuggestions(candidates, loadedSuggestions.flat()),
-    ]);
-    discovery.replacementSuggestions = mergedSuggestions;
-    renderReplacementSuggestions(mergedSuggestions, mergedSuggestions.length ? "" : "No replacement suggestions found for this original text.");
+    }, (_candidate, suggestions) => {
+        loadedSuggestions.push(...suggestions);
+        renderMergedSuggestions();
+    });
+    renderMergedSuggestions(true);
 }
 function clearDiscoveryFormState() {
     if (replacementSuggestionTimeout) {
@@ -1568,7 +1723,7 @@ async function handleRefreshSuggestionsClick() {
     try {
         const discovery = ensureDiscoveryState();
         discovery.novelTerms = await loadNovelTermEntries(true);
-        await updateReplacementSuggestionsForCandidates(findNovelCandidatesByOriginalInput(options.value, options.isRegex, options.caseSensitive), options.value, true, getOriginalInputFieldSuggestions(options.value, options.isRegex));
+        await updateReplacementSuggestionsForCandidates(findNovelCandidatesByOriginalInput(options.value, options.isRegex, options.caseSensitive), options.value, false, getOriginalInputFieldSuggestions(options.value, options.isRegex));
     }
     catch (error) {
         (0,utils/* log */.Rm)(state/* state */.wk.globalSettings, "WTR Term Replacer: Replacement suggestion refresh failed", error);
@@ -1587,7 +1742,7 @@ function handleSuggestionTargetFocus(event) {
 function getExistingSuggestionTokens(value) {
     return new Set(value
         .split(/\s*(?:\||\/|,|;|\n)\s*/)
-        .map((token) => token.trim())
+        .map((token) => token.replace(/\s+/g, " ").trim().toLocaleLowerCase())
         .filter(Boolean));
 }
 function getReplacementAppendSeparator(value, isRegex) {
@@ -1656,7 +1811,7 @@ function mergeSuggestionInputValue(currentValue, suggestion, isRegex, selectionS
     if (!trimmedValue) {
         return replacement;
     }
-    if (getExistingSuggestionTokens(trimmedValue).has(replacement)) {
+    if (getExistingSuggestionTokens(trimmedValue).has(replacement.replace(/\s+/g, " ").trim().toLocaleLowerCase())) {
         return currentValue;
     }
     return `${currentValue.trimEnd()}${getSuggestionAppendSeparator(trimmedValue, isRegex, targetField)}${replacement}`;
@@ -1690,15 +1845,15 @@ function getPopoverBadgeSuggestion(badge) {
     const iconHref = badge.querySelector("use")?.getAttribute("href") || "";
     const classSource = `${getElementClassText(badge)} ${getElementClassText(userTerm)} ${iconHref}`;
     if (/google|g_translate|bg-primary/i.test(classSource)) {
-        return normalizeReplacementSuggestion(replacement, getPopoverBadgeCount(badge), "Google", 90);
+        return handlers_normalizeReplacementSuggestion(replacement, getPopoverBadgeCount(badge), "Google", 90);
     }
     if (/dictionary|bg-success/i.test(classSource)) {
-        return normalizeReplacementSuggestion(replacement, getPopoverBadgeCount(badge), "WTR", 30);
+        return handlers_normalizeReplacementSuggestion(replacement, getPopoverBadgeCount(badge), "WTR", 30);
     }
     if (userTerm) {
-        return normalizeReplacementSuggestion(replacement, getPopoverBadgeCount(badge), "WTR", 40);
+        return handlers_normalizeReplacementSuggestion(replacement, getPopoverBadgeCount(badge), "WTR", 40);
     }
-    return normalizeReplacementSuggestion(replacement, getPopoverBadgeCount(badge), "WTR", 50);
+    return handlers_normalizeReplacementSuggestion(replacement, getPopoverBadgeCount(badge), "WTR", 50);
 }
 function getNewPopoverSuggestion(candidate) {
     const spans = Array.from(candidate.querySelectorAll("span"));
@@ -1718,12 +1873,12 @@ function getNewPopoverSuggestion(candidate) {
     const iconHref = candidate.querySelector("use")?.getAttribute("href") || "";
     const classSource = `${getElementClassText(candidate)} ${iconHref}`;
     if (/g_translate|bg-google|google/i.test(classSource)) {
-        return normalizeReplacementSuggestion(replacement, count, "Google", 90);
+        return handlers_normalizeReplacementSuggestion(replacement, count, "Google", 90);
     }
     if (/dictionary|profile|green|success/i.test(classSource)) {
-        return normalizeReplacementSuggestion(replacement, count, "WTR", 30);
+        return handlers_normalizeReplacementSuggestion(replacement, count, "WTR", 30);
     }
-    return normalizeReplacementSuggestion(replacement, count, "WTR", 50);
+    return handlers_normalizeReplacementSuggestion(replacement, count, "WTR", 50);
 }
 function getNewWtrPopoverRoot(element) {
     const candidate = element.matches('[data-slot="popover-content"], [role="dialog"]')
@@ -1762,9 +1917,9 @@ function getNewWtrPopoverContextFromElement(element) {
     const recentSuggestions = Array.isArray(recentContext.suggestions) ? recentContext.suggestions : [];
     const original = normalizePopoverText(recentContext.original) || popoverSuggestions[0]?.replacement || sourceTerm;
     const resolvedSourceTerm = sourceTerm || normalizePopoverText(recentContext.sourceTerm);
-    const sourceSuggestion = normalizeReplacementSuggestion(resolvedSourceTerm, 0, "Source", -10);
-    const currentSuggestion = normalizeReplacementSuggestion(original, 0, "Current", 0);
-    const resolvedSuggestions = dedupeReplacementSuggestions([
+    const sourceSuggestion = handlers_normalizeReplacementSuggestion(resolvedSourceTerm, 0, "Source", -10);
+    const currentSuggestion = handlers_normalizeReplacementSuggestion(original, 0, "Current", 0);
+    const resolvedSuggestions = handlers_dedupeReplacementSuggestions([
         ...(sourceSuggestion ? [sourceSuggestion] : []),
         ...(currentSuggestion ? [currentSuggestion] : []),
         ...popoverSuggestions,
@@ -1791,9 +1946,9 @@ function getWtrPopoverContextFromElement(element) {
     const recentSuggestions = Array.isArray(recentContext.suggestions) ? recentContext.suggestions : [];
     const original = normalizePopoverText(recentContext.original) || popoverSuggestions[0]?.replacement || sourceTerm;
     const resolvedSourceTerm = sourceTerm || normalizePopoverText(recentContext.sourceTerm);
-    const sourceSuggestion = normalizeReplacementSuggestion(resolvedSourceTerm, 0, "Source", -10);
-    const currentSuggestion = normalizeReplacementSuggestion(original, 0, "Current", 0);
-    const resolvedSuggestions = dedupeReplacementSuggestions([
+    const sourceSuggestion = handlers_normalizeReplacementSuggestion(resolvedSourceTerm, 0, "Source", -10);
+    const currentSuggestion = handlers_normalizeReplacementSuggestion(original, 0, "Current", 0);
+    const resolvedSuggestions = handlers_dedupeReplacementSuggestions([
         ...(sourceSuggestion ? [sourceSuggestion] : []),
         ...(currentSuggestion ? [currentSuggestion] : []),
         ...popoverSuggestions,
@@ -1818,7 +1973,7 @@ function mergePopoverContexts(primary, secondary) {
     return {
         original: normalizePopoverText(primary.original) || normalizePopoverText(secondary.original),
         sourceTerm: normalizePopoverText(primary.sourceTerm) || normalizePopoverText(secondary.sourceTerm),
-        suggestions: dedupeReplacementSuggestions([...(primary.suggestions || []), ...(secondary.suggestions || [])]),
+        suggestions: handlers_dedupeReplacementSuggestions([...(primary.suggestions || []), ...(secondary.suggestions || [])]),
     };
 }
 function encodePopoverContext(context) {
@@ -1866,7 +2021,7 @@ function openWtrPopoverTermContext(context) {
         replacementSuggestionTimeout = null;
     }
     suppressNextReplacementSuggestionInput = false;
-    ensureDiscoveryState().replacementSuggestions = dedupeReplacementSuggestions(context.suggestions);
+    ensureDiscoveryState().replacementSuggestions = handlers_dedupeReplacementSuggestions(context.suggestions);
     renderReplacementSuggestions(ensureDiscoveryState().replacementSuggestions);
     activeSuggestionTarget = "replacement";
     replacementInput.focus();
@@ -1878,8 +2033,8 @@ function handleWtrTextPatchClick(event) {
     }
     const visibleText = normalizePopoverText(patch.textContent);
     const sourceTerm = normalizePopoverText(patch.getAttribute("data-hash"));
-    const sourceSuggestion = normalizeReplacementSuggestion(sourceTerm, 0, "Source", -10);
-    const currentSuggestion = normalizeReplacementSuggestion(visibleText, 0, "Current", 0);
+    const sourceSuggestion = handlers_normalizeReplacementSuggestion(sourceTerm, 0, "Source", -10);
+    const currentSuggestion = handlers_normalizeReplacementSuggestion(visibleText, 0, "Current", 0);
     state/* state */.wk.wtrPopoverTermContext = {
         original: visibleText,
         sourceTerm,
@@ -3696,6 +3851,11 @@ const UI_CSS = `
     }
     .wtr-suggestion-icon-segment svg { width: 1rem; height: 1rem; }
     .wtr-suggestion-label { padding: 0 0.375rem; }
+    .wtr-suggestion-source-badge {
+        align-self: stretch; display: inline-flex; align-items: center; padding: 0 0.35rem;
+        border-left: 1px solid rgba(255,255,255,0.24); background: rgba(15,23,42,0.22);
+        font-size: 0.65rem; font-weight: 800; letter-spacing: 0.015em; text-transform: uppercase;
+    }
     .wtr-suggestion-google { background-color: #4285f4; border-color: transparent; }
     .wtr-suggestion-google:hover { background-color: #5b9bff; }
     .wtr-suggestion-source { background-color: #374151; border-color: rgba(0,0,0,0.25); }
@@ -3703,6 +3863,14 @@ const UI_CSS = `
     .wtr-suggestion-field { background-color: #4f46e5; border-color: rgba(79,70,229,0.65); }
     .wtr-suggestion-field:hover { background-color: #6366f1; }
     .wtr-replacement-suggestion-btn.wtr-suggestion-existing { box-shadow: inset 0 0 0 1px rgba(255,255,255,0.38); }
+    .wtr-replacement-suggestion-btn.wtr-suggestion-in-original {
+        background-color: #7c3aed; border-color: rgba(124,58,237,0.78);
+    }
+    .wtr-replacement-suggestion-btn.wtr-suggestion-in-original:hover { background-color: #8b5cf6; }
+    .wtr-replacement-suggestion-btn.wtr-suggestion-in-replacement:not(.wtr-suggestion-in-original) {
+        background-color: #6d28d9; border-color: rgba(109,40,217,0.72);
+    }
+    .wtr-replacement-suggestion-btn.wtr-suggestion-in-replacement:not(.wtr-suggestion-in-original):hover { background-color: #7c3aed; }
     .wtr-replacer-popover-actions { display: flex; flex-direction: column; gap: 0.25rem; }
     .wtr-replacer-popover-add-btn { white-space: nowrap; margin-top: 0.25rem !important; }
 
