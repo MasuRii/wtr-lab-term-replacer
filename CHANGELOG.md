@@ -10,9 +10,22 @@ No unreleased changes.
 
 ## [5.7.2] - 2026-06-08
 
+### Added
+- Added source badges on suggestion buttons that display where each suggestion originates (Source, WTR, AI Glossary, Generic, Raw, Community).
+- Added progressive suggestion rendering so suggestions appear incrementally as each API batch completes instead of waiting for all batches.
+- Added glossary source label detection that identifies AI Glossary entries, generic glossary titles, and raw glossary sources from WTR term payloads.
+- Added purple highlight on suggestions already present in the Original Text field and a distinct darker purple highlight for the Replacement Text field.
+- Added cache-busting refresh parameter to the terms API URL when `Refresh Suggestions` is triggered, bypassing stale browser cache.
+- Added comprehensive tests for source label propagation, suggestion merging, progressive batch loading, presence label detection, and cache-busting URL generation.
+
 ### Changed
-- Refreshed release metadata and generated install artifacts for the 5.7.2 patch release.
-- No runtime behavior changes were introduced.
+- Reworked suggestion deduplication and merging to combine source labels with `+` separators, merge counts, and prefer the best source rank when duplicates are found.
+- Changed duplicate term candidate handling to merge replacement suggestions and take the maximum occurrence count instead of overwriting.
+- Changed `API` source labels to display as `Community` in the suggestion UI.
+- Changed suggestion presence detection to normalize whitespace and use locale-aware lowercase comparison, so `"Song Shuhang"` matches `"song shuhang"` or slash/pipe-separated entries.
+- Changed the suggestion merge helper to use whitespace-normalized comparison before inserting, preventing near-duplicate entries.
+- Moved suggestion deduplication, merging, presence detection, and count-display logic from `handlers.ts` into `termDiscoveryHelpers.ts` for improved testability and reuse.
+- Refresh Suggestions no longer merges prior suggestions by default, giving a cleaner result set from the latest API data.
 
 ## [5.7.1] - 2026-06-02
 
