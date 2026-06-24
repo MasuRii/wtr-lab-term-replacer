@@ -8,6 +8,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 No unreleased changes.
 
+## [5.7.4] - 2026-06-24
+
+### Changed
+- Removed the redundant `monitorURLChanges()` 500ms polling loop; SPA navigation is now handled solely by the existing `pushState`/`replaceState`/`popstate` listeners.
+- Removed the redundant `setupFallbackDetection()` 3-second poll; the MutationObserver already detects chapter content.
+- Consolidated the `wtrPopoverObserver` and `setupReaderControlHardening` MutationObservers into a single debounced `setupUIObserver`.
+- Optimized `estimateContentLoadLevel()` to read `textContent.length` directly instead of querying and iterating all child elements.
+- Cached and scoped `findNativeFloatingAddTermButton()` and `findMenuButtonTargets()` with a TTL cache and container-scoped selectors so they no longer scan every button on each mutation.
+- Wrapped `handleTextSelection` in a debounce and added an empty-selection early return to skip unnecessary DOM queries.
+
+### Removed
+- Removed dead code: `_detectContentWithMultipleStrategies`, `progressiveContentProcessing`, `isContentReadyForProcessing`, and duplicated multi-script functions from `utils.ts`.
+- Removed unused state fields (`currentURL`, `domConflictDetected`, `multiScriptPerformanceImpact`, `isProcessingInProgress`) and the unused `initializeState()` function.
+
+### Performance
+- Eliminated redundant infinite polling loops and reduced per-mutation button scanning for smoother reading on slow-loading pages.
+
 ## [5.7.3] - 2026-06-17
 
 ### Added
