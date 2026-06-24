@@ -565,12 +565,51 @@ export function syncUITheme() {
 	uiContainer.dataset.theme = isWtrDarkModeActive() ? "dark" : "light"
 }
 
+// Cache for the native floating "Add Term" button to avoid scanning every button on every mutation.
+let nativeAddTermButtonCache: { button: HTMLButtonElement | null; expiresAt: number } = {
+	button: null,
+	expiresAt: 0,
+}
+const NATIVE_ADD_TERM_CACHE_TTL = 1000
+
 function findNativeFloatingAddTermButton(): HTMLButtonElement | null {
-	return (
-		Array.from(document.querySelectorAll("button")).find(
-			(button) => normalizeMenuText(button) === "Add Term" && !button.classList.contains("wtr-add-term-float-btn"),
-		) || null
-	)
+	const now = Date.now()
+	if (now < nativeAddTermButtonCache.expiresAt) {
+		// Verify the cached button is still in the DOM before reusing it.
+		const cached = nativeAddTermButtonCache.button
+		if (!cached || document.contains(cached)) {
+			return cached
+		}
+	}
+
+	// Prefer scoped selectors over scanning every button on the page.
+	// The native control lives inside fixed/reader chrome, so check those containers first.
+	const scopedRoots = document.querySelectorAll<HTMLElement>(".fixed, [role='toolbar'], .chapter-wrap, .chapter-tracker")
+	let match: HTMLButtonElement | null = null
+	for (const root of scopedRoots) {
+		match =
+			(Array.from(root.querySelectorAll<HTMLButtonElement>("button")).find(
+				(button) =>
+					normalizeMenuText(button) === "Add Term" &&
+					!button.classList.contains("wtr-add-term-float-btn"),
+			) as HTMLButtonElement | undefined) || null
+		if (match) {
+			break
+		}
+	}
+
+	// Fall back to a full scan only if scoped lookup missed (e.g. custom layouts).
+	if (!match) {
+		match =
+			(Array.from(document.querySelectorAll<HTMLButtonElement>("button")).find(
+				(button) =>
+					normalizeMenuText(button) === "Add Term" &&
+					!button.classList.contains("wtr-add-term-float-btn"),
+			) as HTMLButtonElement | undefined) || null
+	}
+
+	nativeAddTermButtonCache = { button: match, expiresAt: now + NATIVE_ADD_TERM_CACHE_TTL }
+	return match
 }
 
 export function syncFloatingAddTermButtonPosition() {
@@ -668,20 +707,45 @@ function disableWholeWordForRegex() {
 	}
 }
 
-function setupReaderControlHardening() {
+// Single consolidated, debounced MutationObserver for all UI hardening concerns:
+// theme syncing, menu button injection, floating button positioning, and term popover
+// enhancement. Replaces the previous separate observers that each watched document.body.
+function setupUIObserver() {
 	let syncTimeout: ReturnType<typeof setTimeout> | null = null
+	let pendingNodes: Element[] = []
+
+	const flush = () => {
+		syncTimeout = null
+		syncUITheme()
+		addMenuButton()
+		syncFloatingAddTermButtonPosition()
+		if (pendingNodes.length > 0) {
+			for (const node of pendingNodes) {
+				Handlers.enhanceWtrTermPopovers(node)
+			}
+			pendingNodes = []
+		}
+	}
+
 	const scheduleSync = () => {
 		if (syncTimeout) {
 			clearTimeout(syncTimeout)
 		}
-		syncTimeout = setTimeout(() => {
-			syncUITheme()
-			addMenuButton()
-			syncFloatingAddTermButtonPosition()
-		}, 100)
+		syncTimeout = setTimeout(flush, 150)
 	}
 
-	const observer = new MutationObserver(scheduleSync)
+	const observer = new MutationObserver((mutations) => {
+		for (const mutation of mutations) {
+			if (mutation.type === "childList" && mutation.addedNodes.length > 0) {
+				mutation.addedNodes.forEach((node) => {
+					if (node instanceof Element) {
+						pendingNodes.push(node)
+					}
+				})
+			}
+		}
+		scheduleSync()
+	})
 	observer.observe(document.body, {
 		childList: true,
 		subtree: true,
@@ -740,18 +804,8 @@ export function createUI() {
 	uiContainer.querySelector("#wtr-exit-dup-btn").addEventListener("click", exitDupMode)
 	document.addEventListener("click", Handlers.handleWtrTextPatchClick, true)
 	document.addEventListener("click", Handlers.handleWtrPopoverAddTermClick)
-	const wtrPopoverObserver = new MutationObserver((mutations) => {
-		mutations.forEach((mutation) => {
-			mutation.addedNodes.forEach((node) => {
-				if (node instanceof Element) {
-					Handlers.enhanceWtrTermPopovers(node)
-				}
-			})
-		})
-	})
-	wtrPopoverObserver.observe(document.body, { childList: true, subtree: true })
 	Handlers.enhanceWtrTermPopovers(document)
-	setupReaderControlHardening()
+	setupUIObserver()
 
 	// Add scroll event listener to save term list location
 	const contentArea = uiContainer.querySelector(".wtr-replacer-content")
@@ -1210,24 +1264,57 @@ function normalizeMenuText(element) {
 	return (element?.textContent || "").replace(/\s+/g, " ").trim()
 }
 
-function findMenuButtonTargets() {
-	const targets: Array<{ container: Element; originalButton: HTMLButtonElement; layout: "legacy" | "new-grid" }> = []
+// Cache for menu button targets to avoid scanning every button on every mutation.
+let menuButtonTargetsCache: { targets: ReturnType<typeof computeMenuButtonTargets>; expiresAt: number } = {
+	targets: [],
+	expiresAt: 0,
+}
+const MENU_BUTTON_TARGETS_CACHE_TTL = 1000
+
+type MenuButtonTarget = {
+	container: Element
+	originalButton: HTMLButtonElement
+	layout: "legacy" | "new-grid"
+}
+
+function computeMenuButtonTargets(): MenuButtonTarget[] {
+	const targets: MenuButtonTarget[] = []
 	const legacyButton = document.querySelector("button.term-edit-btn:not(.replacer-settings-btn)") as HTMLButtonElement | null
 	const legacyContainer = legacyButton?.closest("div.col-6, [role='group'], .btn-group")
 	if (legacyButton && legacyContainer) {
 		targets.push({ container: legacyContainer, originalButton: legacyButton, layout: "legacy" })
 	}
 
-	const newEditButtons = Array.from(document.querySelectorAll("button")).filter(
-		(button) => normalizeMenuText(button) === "Edit Terms" && !button.classList.contains("replacer-settings-btn"),
+	// Scope the "Edit Terms" button scan to likely containers before falling back to a full scan.
+	const scopedRoots = document.querySelectorAll<HTMLElement>(
+		".grid, [data-slot='tabs-content'], .chapter-wrap, .chapter-tracker",
 	)
-	newEditButtons.forEach((button) => {
-		const container = button.closest(".grid, [data-slot='tabs-content'], .chapter-wrap, .chapter-tracker")
-		if (container && !targets.some((target) => target.container === container)) {
-			targets.push({ container, originalButton: button, layout: "new-grid" })
+	const seenContainers = new Set<Element>()
+	for (const root of scopedRoots) {
+		const buttons = Array.from(root.querySelectorAll<HTMLButtonElement>("button")).filter(
+			(button) => normalizeMenuText(button) === "Edit Terms" && !button.classList.contains("replacer-settings-btn"),
+		)
+		for (const button of buttons) {
+			const container = button.closest(".grid, [data-slot='tabs-content'], .chapter-wrap, .chapter-tracker")
+			if (container && !seenContainers.has(container)) {
+				seenContainers.add(container)
+				if (!targets.some((target) => target.container === container)) {
+					targets.push({ container, originalButton: button, layout: "new-grid" })
+				}
+			}
 		}
-	})
+	}
 
+	return targets
+}
+
+function findMenuButtonTargets(): MenuButtonTarget[] {
+	const now = Date.now()
+	if (now < menuButtonTargetsCache.expiresAt) {
+		return menuButtonTargetsCache.targets
+	}
+	const targets = computeMenuButtonTargets()
+	menuButtonTargetsCache = { targets, expiresAt: now + MENU_BUTTON_TARGETS_CACHE_TTL }
 	return targets
 }
 

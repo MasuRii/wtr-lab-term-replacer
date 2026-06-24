@@ -26,7 +26,7 @@ import {
 } from "./ui"
 import { reprocessCurrentChapter } from "./observer"
 import { computeDupGroups, updateDupModeAfterChange } from "./duplicates"
-import { findChapterBodyForUrl, getReaderContextFromPath, log } from "./utils"
+import { debounce, findChapterBodyForUrl, getReaderContextFromPath, log } from "./utils"
 import { performReplacements, revertAllReplacements } from "./engine"
 import {
 	DiscoveredTermCandidate,
@@ -1188,30 +1188,38 @@ function getSelectionAnchorElement(selection: Selection | null): Element | null 
 	return anchorNode.nodeType === Node.ELEMENT_NODE ? (anchorNode as Element) : anchorNode.parentElement
 }
 
-export function handleTextSelection(e) {
+export const handleTextSelection = debounce((e) => {
 	const CHAPTER_BODY_SELECTOR = ".chapter-body"
 	const selection = window.getSelection()
+	const selectedText = selection?.toString().trim() || ""
+
+	const floatBtn = document.querySelector(".wtr-add-term-float-btn") as HTMLElement | null
+	if (!floatBtn) {
+		return
+	}
+
+	// Skip the expensive DOM queries when there is no active selection.
+	if (!selectedText) {
+		floatBtn.style.display = "none"
+		return
+	}
+
 	const eventTarget = e.target instanceof Element ? e.target : null
 	const anchorElement = getSelectionAnchorElement(selection)
 	const isChapterSelection = Boolean(
 		eventTarget?.closest(CHAPTER_BODY_SELECTOR) || anchorElement?.closest(CHAPTER_BODY_SELECTOR),
 	)
-	const floatBtn = document.querySelector(".wtr-add-term-float-btn") as HTMLElement | null
-	if (!floatBtn) {
-		return
-	}
 	if (!isChapterSelection) {
 		floatBtn.style.display = "none"
 		return
 	}
-	const selectedText = selection?.toString().trim() || ""
-	if (selectedText && selectedText.length > 0 && selectedText.length < 100) {
+	if (selectedText.length > 0 && selectedText.length < 100) {
 		syncFloatingAddTermButtonPosition()
 		floatBtn.style.display = "flex"
 	} else {
 		floatBtn.style.display = "none"
 	}
-}
+}, 150)
 
 export function handleAddTermFromSelection() {
 	const selection = window.getSelection().toString().trim()

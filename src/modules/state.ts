@@ -16,28 +16,13 @@ export const state: any = {
 	originalTextNodes: new WeakMap(),
 	otherWTRScripts: new Set(),
 	processingStartTime: new Map(),
-	domConflictDetected: false,
-	multiScriptPerformanceImpact: new Map(),
-	currentURL: window.location.href,
 	processingQueue: new Set(),
-	isProcessingInProgress: false,
 	observedMenuContainers: new WeakSet(),
 	termDiscovery: {
 		novelTerms: [],
 		replacementSuggestions: [],
 		selectedCandidate: null,
 	},
-}
-
-// Function to initialize novel slug - should be called after utils is loaded
-export function initializeState() {
-	if (!state.novelSlug) {
-		// Import getNovelSlug function dynamically to avoid circular dependencies
-		import("./utils").then(({ getNovelSlug }) => {
-			state.novelSlug = getNovelSlug()
-		})
-	}
-	return state.novelSlug
 }
 
 // Set novel slug (for synchronous initialization)

@@ -6,7 +6,6 @@ import { CHAPTER_BODY_SELECTOR } from "./config"
 import {
 	findChapterBodyById,
 	findChapterBodyForUrl,
-	findChapterContainerForUrl,
 	getChapterProcessingId,
 	log,
 } from "./utils"
@@ -17,128 +16,6 @@ export function waitForInitialContent() {
 	// Set up mutation observer for dynamic content loading
 	log(state.globalSettings, "WTR Term Replacer: Setting up content change observer")
 	setupContentObserver()
-
-	// Set up additional fallback mechanisms
-	log(state.globalSettings, "WTR Term Replacer: Setting up fallback detection mechanisms")
-	setupFallbackDetection()
-}
-
-function _detectContentWithMultipleStrategies() {
-	const detectionStrategies = [
-		// Strategy 1: Standard chapter ID/tracker detection
-		() => {
-			const contentContainer = findChapterContainerForUrl(document)
-			return contentContainer ? { container: contentContainer, strategy: "chapter-container" } : null
-		},
-
-		// Strategy 2: Look for chapter body directly
-		() => {
-			const chapterBody = findChapterBodyForUrl(document)
-			return chapterBody
-				? {
-						container:
-							chapterBody.closest(".chapter-container, .chapter-tracker, [id*=\"chapter\"]") || chapterBody,
-						strategy: "chapter-body",
-					}
-				: null
-		},
-
-		// Strategy 3: Look for any container with substantial content
-		() => {
-			const contentAreas = document.querySelectorAll('main, article, .content, .chapter, [role="main"]')
-			for (const area of contentAreas) {
-				if (area.textContent?.trim().length > 200) {
-					return { container: area, strategy: "content-area" }
-				}
-			}
-			return null
-		},
-
-		// Strategy 4: Last resort - any substantial text content
-		() => {
-			const bodyText = document.body.textContent?.trim() || ""
-			if (bodyText.length > 500 && !bodyText.includes("loading")) {
-				return { container: document.body, strategy: "body-fallback" }
-			}
-			return null
-		},
-	]
-
-	let currentStrategy = 0
-	const maxRetriesPerStrategy = 20
-	let retries = 0
-
-	const enhancedPoll = setInterval(async () => {
-		const result = detectionStrategies[currentStrategy]()
-
-		if (result && result.container) {
-			clearInterval(enhancedPoll)
-			console.log(`WTR Term Replacer: Content detected using strategy: ${result.strategy}`)
-
-			// Progressive processing based on content readiness
-			await progressiveContentProcessing(result.container, result.strategy)
-			monitorURLChanges()
-			return
-		}
-
-		retries++
-		if (retries >= maxRetriesPerStrategy) {
-			currentStrategy++
-			retries = 0
-			if (currentStrategy >= detectionStrategies.length) {
-				clearInterval(enhancedPoll)
-				console.warn("WTR Term Replacer: All detection strategies exhausted. Will retry on content changes.")
-				// Keep fallback detection active
-			} else {
-				log(`WTR Term Replacer: Strategy ${currentStrategy} failed, trying next strategy...`)
-			}
-		}
-	}, 500) // Increased interval for slower polling
-}
-
-async function progressiveContentProcessing(container, strategy) {
-	log(`WTR Term Replacer: Starting progressive processing with strategy: ${strategy}`)
-
-	// Give the page more time to fully load, especially for slow connections
-	const settlingDelays = [200, 500, 1000, 2000] // Progressive delays
-	let currentDelayIndex = 0
-
-	const attemptProcessing = async () => {
-		try {
-			// Check content readiness with multiple criteria
-			if (isContentReadyForProcessing(container)) {
-				log("WTR Term Replacer: Content ready for processing, proceeding...")
-				processVisibleChapter()
-				return true
-			} else if (currentDelayIndex < settlingDelays.length - 1) {
-				currentDelayIndex++
-				log(`WTR Term Replacer: Content not ready, waiting ${settlingDelays[currentDelayIndex]}ms more...`)
-				setTimeout(attemptProcessing, settlingDelays[currentDelayIndex])
-				return false
-			} else {
-				log("WTR Term Replacer: Final attempt with current content state")
-				processVisibleChapter() // Force processing
-				return true
-			}
-		} catch (error) {
-			log("WTR Term Replacer: Error during progressive processing:", error)
-			return false
-		}
-	}
-
-	await attemptProcessing()
-}
-
-function isContentReadyForProcessing(container) {
-	// Multiple readiness criteria for robust detection
-	const hasSubstantialContent = container.textContent?.trim().length > 100
-	const hasNoActiveLoaders = !container.querySelector('.loading, .spinner, [style*="loading"], .skeleton')
-	const isVisible = container.offsetWidth > 0 && container.offsetHeight > 0
-	const hasChapterContent =
-		container.querySelector(`${CHAPTER_BODY_SELECTOR}, .wtr-line, [data-line]`) ||
-		container.querySelector("p, h1, h2, h3, h4, h5, h6")
-
-	return hasSubstantialContent && hasNoActiveLoaders && isVisible && hasChapterContent
 }
 
 function setupContentObserver() {
@@ -252,49 +129,6 @@ function setupContentObserver() {
 	log("WTR Term Replacer: Enhanced content observer activated with multi-script coordination")
 }
 
-function setupFallbackDetection() {
-	// Periodic fallback check for stubborn slow-loading pages
-	let fallbackAttempts = 0
-	const maxFallbackAttempts = 10
-
-	const fallbackInterval = setInterval(() => {
-		if (document.querySelector("[data-wtr-processed]")) {
-			clearInterval(fallbackInterval)
-			return
-		}
-
-		fallbackAttempts++
-		log(`WTR Term Replacer: Fallback attempt ${fallbackAttempts}/${maxFallbackAttempts}`)
-
-		// Try processing if we have any chapter-like content
-		const chapterBody = findChapterBodyForUrl(document)
-		if (chapterBody) {
-			log("WTR Term Replacer: Fallback processing successful")
-			processVisibleChapter()
-			clearInterval(fallbackInterval)
-			return
-		}
-
-		// Check for any substantial content that might be chapter content
-		const potentialContent = document.querySelector("main, article, .content, .chapter")
-		if (potentialContent && potentialContent.textContent?.trim().length > 200) {
-			log("WTR Term Replacer: Fallback processing with detected content")
-			processVisibleChapter()
-			clearInterval(fallbackInterval)
-		}
-
-		if (fallbackAttempts >= maxFallbackAttempts) {
-			clearInterval(fallbackInterval)
-			log("WTR Term Replacer: Fallback detection exhausted")
-		}
-	}, 3000) // Check every 3 seconds
-
-	// Clear fallback interval after 5 minutes to prevent infinite polling
-	setTimeout(() => {
-		clearInterval(fallbackInterval)
-	}, 300000)
-}
-
 export function processVisibleChapter() {
 	const chapterBody = findChapterBodyForUrl(document)
 	const chapterId = getChapterProcessingId(window.location.href, chapterBody)
@@ -397,19 +231,15 @@ async function executeProcessingWithRetry(chapterId, retryAttempts, attemptIndex
 }
 
 function estimateContentLoadLevel(chapterBody) {
-	// Estimate how much content is loaded based on text density and structure
-	const textNodes = chapterBody.querySelectorAll("p, h1, h2, h3, h4, h5, h6, div, span")
-	const totalTextLength = Array.from(textNodes as Iterable<Element>).reduce(
-		(total, node) => total + (node.textContent?.trim().length || 0),
-		0,
-	)
+	// Estimate how much content is loaded using the container's text length directly,
+	// avoiding the cost of querying all child elements and iterating over them.
+	const totalTextLength = chapterBody.textContent?.trim().length || 0
 
 	// Check for loading indicators or placeholder content
 	const hasLoadingIndicators = chapterBody.querySelector('.loading, .spinner, [style*="loading"], [class*="loading"]')
+	const rawText = chapterBody.textContent || ""
 	const hasPlaceholderContent =
-		chapterBody.textContent?.includes("Loading...") ||
-		chapterBody.textContent?.includes("loading") ||
-		chapterBody.textContent?.includes("...")
+		rawText.includes("Loading...") || rawText.includes("loading") || rawText.includes("...")
 
 	// Calculate load level based on content density and absence of loading indicators
 	let loadLevel = Math.min(totalTextLength / 1000, 1.0) // Normalize to 0-1 based on 1000 chars
@@ -567,14 +397,4 @@ export function reprocessCurrentChapter() {
 
 	// Use robust reprocessing with retry mechanism
 	scheduleChapterProcessing(chapterId, chapterBody)
-}
-
-function monitorURLChanges() {
-	setInterval(() => {
-		if (window.location.href !== state.currentURL) {
-			log(`WTR Term Replacer: URL changed to ${window.location.href}.`)
-			state.currentURL = window.location.href
-			setTimeout(processVisibleChapter, 250)
-		}
-	}, 500)
 }
