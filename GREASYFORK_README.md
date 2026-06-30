@@ -19,6 +19,7 @@ A userscript that replaces terms on WTR-Lab.com chapters so you can read with th
 ## Features
 
 - **Term replacement** — define original/replacement pairs and the script swaps them in chapter text as you read.
+- **Deletion terms** — leave Replacement Text empty to remove the matched text entirely; empty-replacement terms show as `→ (remove)` in the list.
 - **Per-novel lists** — each novel keeps its own set of terms, so settings for one book don't bleed into another.
 - **Regex support** — use regular expressions for pattern-based replacements when plain text isn't enough.
 - **Whole-word and case-sensitive modes** — toggle these per term for precision.
@@ -26,7 +27,7 @@ A userscript that replaces terms on WTR-Lab.com chapters so you can read with th
 - **Duplicate detection** — the script warns you when a new term conflicts with an existing one.
 - **Finder bridge** — if WTR Lab Term Inconsistency Finder is also running, it can read your saved terms directly. No import/export step needed.
 - **Smart suggestions** — click WTR's built-in term popovers or type an original value to get source/Community/WTR/AI Glossary/Google suggestion badges you can insert into Original Text or Replacement Text. Each suggestion shows its origin via a compact source badge.
-- **Progressive suggestion loading** — suggestions render incrementally as each API batch resolves, so you see results immediately instead of waiting for all lookups to finish.
+- **Suggestion loading** — replacement suggestions load in parallel batches and render once results arrive, with field/regex alternatives shown immediately before network lookups finish.
 - **Glossary-aware source labels** — AI Glossary, generic glossary titles, and raw glossary sources are detected and labeled on each suggestion for clearer provenance.
 - **Field-aware presence highlights** — suggestions already present in the Original Text or Replacement Text field are highlighted with distinct purple shades, with whitespace-normalized, case-insensitive matching.
 - **Regex-friendly term building** — suggestion clicks, refreshes, Variation, and Wild Char helpers can build `|`-based regex alternatives, normalize slash or spaced separators, warn when regex-like text is saved with Regex off, and sort longer alternatives first.
