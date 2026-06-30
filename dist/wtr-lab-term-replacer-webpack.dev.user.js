@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name WTR Lab Term Replacer [DEV]
 // @description Replace terms and names in WTR-Lab.com chapter text with your preferred versions. Per-novel term lists, regex support, whole-word and case-sensitive modes, import/export, duplicate detection, and live sync with WTR Lab Term Inconsistency Finder.
-// @version 5.7.4-dev.1782306658412
+// @version 5.7.5-dev.1782845176065
 // @author MasuRii
 // @homepage https://github.com/MasuRii/wtr-lab-term-replacer-webpack#readme
 // @supportURL https://github.com/MasuRii/wtr-lab-term-replacer-webpack/issues
@@ -1718,8 +1718,10 @@ async function updateReplacementSuggestionsForCandidates(candidates, inputValue,
             return [];
         }
     }, (_candidate, suggestions) => {
+        // Accumulate without re-rendering per batch; a single final render below
+        // avoids a burst of suggestion-panel rebuilds (and the MutationObserver
+        // reflows they trigger) while the user is typing.
         loadedSuggestions.push(...suggestions);
-        renderMergedSuggestions();
     });
     renderMergedSuggestions(true);
 }
@@ -1768,7 +1770,7 @@ function handleReplacementSuggestionInput(event) {
             }
         }
         updateReplacementSuggestionsForCandidates(findNovelCandidatesByOriginalInput(query, options.isRegex, options.caseSensitive), query, mergeExisting, false, fieldSuggestions);
-    }, 250);
+    }, 400);
 }
 async function handleRefreshSuggestionsClick() {
     if (replacementSuggestionTimeout) {
@@ -2469,15 +2471,20 @@ function handleAddTermFromSelection() {
     }
     document.querySelector(".wtr-add-term-float-btn").style.display = "none";
 }
+// Debounced render + persist so each keystroke doesn't rebuild the whole term
+// list and write to GM storage synchronously. state is updated immediately so
+// pagination and other handlers stay consistent with the latest search value.
+const debouncedSearchRender = (0,utils/* debounce */.sg)((filter) => {
+    (0,ui/* renderTermList */.FP)(filter);
+    (0,storage.saveSearchFieldValue)();
+}, 200);
 function handleSearch(e) {
     if (state/* state */.w.isDupMode) {
         return;
     }
     state/* state */.w.currentSearchValue = e.target.value;
     state/* state */.w.currentPage = 1;
-    (0,ui/* renderTermList */.FP)(state/* state */.w.currentSearchValue);
-    // Immediately save the search field value for reactive behavior
-    (0,storage.saveSearchFieldValue)();
+    debouncedSearchRender(state/* state */.w.currentSearchValue);
 }
 async function handleDisableToggle(e) {
     state/* state */.w.settings.isDisabled = e.target.checked;
@@ -3817,6 +3824,7 @@ const UI_CSS = `
     .wtr-replacer-term-text { font-family: var(--bs-font-monospace, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace); font-size: 0.9rem; word-wrap: break-word; }
     .wtr-term-original { color: var(--bs-danger, #dc3545) !important; font-weight: bold; }
     .wtr-term-replacement { color: var(--bs-success, #198754) !important; font-weight: bold; }
+    .wtr-term-replacement-empty { color: var(--bs-secondary-color, #6c757d) !important; font-weight: normal; font-style: italic; opacity: 0.85; }
 
     /* --- Floating Button --- */
     .wtr-add-term-float-btn {
@@ -4006,12 +4014,28 @@ function isWtrDarkModeActive() {
     const pageBg = getComputedStyle(document.body).backgroundColor || getComputedStyle(document.documentElement).backgroundColor;
     return isDarkRgb(pageBg) || window.matchMedia?.("(prefers-color-scheme: dark)")?.matches === true;
 }
+// Dark-mode detection performs multiple full-document querySelectorAll scans and
+// getComputedStyle calls (forced reflows). The consolidated UI MutationObserver
+// flush calls syncUITheme() on every DOM mutation (including suggestion-panel
+// re-renders and the site's own background DOM churn), so cache the result to
+// avoid reflowing the document on every keystroke while editing.
+let cachedThemeDetection = { isDark: false, expiresAt: 0 };
+const THEME_DETECTION_CACHE_TTL = 1000;
 function syncUITheme() {
     const uiContainer = document.querySelector(".wtr-replacer-ui");
     if (!uiContainer) {
         return;
     }
-    uiContainer.dataset.theme = isWtrDarkModeActive() ? "dark" : "light";
+    const now = Date.now();
+    let isDark;
+    if (now < cachedThemeDetection.expiresAt) {
+        isDark = cachedThemeDetection.isDark;
+    }
+    else {
+        isDark = isWtrDarkModeActive();
+        cachedThemeDetection = { isDark, expiresAt: now + THEME_DETECTION_CACHE_TTL };
+    }
+    uiContainer.dataset.theme = isDark ? "dark" : "light";
 }
 // Cache for the native floating "Add Term" button to avoid scanning every button on every mutation.
 let nativeAddTermButtonCache = {
@@ -4304,8 +4328,9 @@ function createUI() {
     function validateAndUpdateUI() {
         const isRegexEnabled = regexCheckbox.checked;
         const originalText = originalTextarea.value.trim();
-        const replacementText = replacementInput.value.trim();
-        const isValidInput = originalText.length > 0 && replacementText.length > 0;
+        // An empty replacement is valid: it means "remove the matched text".
+        // Only the original text is required (regex validity is enforced below).
+        const isValidInput = originalText.length > 0;
         const regexWarning = document.getElementById("wtr-regex-disabled-warning");
         const shouldWarnRegexDisabled = !isRegexEnabled && originalText.length > 0 && looksLikeRegexSyntax(originalText);
         if (regexWarning) {
@@ -4481,7 +4506,13 @@ function renderTermList(filter = "") {
             originalSpan.textContent = term.original;
             const replacementSpan = document.createElement("span");
             replacementSpan.className = "wtr-term-replacement";
-            replacementSpan.textContent = term.replacement;
+            if (term.replacement) {
+                replacementSpan.textContent = term.replacement;
+            }
+            else {
+                replacementSpan.textContent = "(remove)";
+                replacementSpan.classList.add("wtr-term-replacement-empty");
+            }
             termText.appendChild(originalSpan);
             termText.appendChild(document.createTextNode(" → "));
             termText.appendChild(replacementSpan);
@@ -4891,7 +4922,7 @@ function log(globalSettings, ...args) {
 (module) {
 
 "use strict";
-module.exports = {"version":"5.7.4"};
+module.exports = {"version":"5.7.5"};
 
 /***/ }
 

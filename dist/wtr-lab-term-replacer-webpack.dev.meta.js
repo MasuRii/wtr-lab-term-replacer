@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name WTR Lab Term Replacer [DEV]
 // @description Replace terms and names in WTR-Lab.com chapter text with your preferred versions. Per-novel term lists, regex support, whole-word and case-sensitive modes, import/export, duplicate detection, and live sync with WTR Lab Term Inconsistency Finder.
-// @version 5.7.4-dev.1782306658412
+// @version 5.7.5-dev.1782845176065
 // @author MasuRii
 // @homepage https://github.com/MasuRii/wtr-lab-term-replacer-webpack#readme
 // @supportURL https://github.com/MasuRii/wtr-lab-term-replacer-webpack/issues
