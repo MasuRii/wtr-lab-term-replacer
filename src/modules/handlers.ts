@@ -359,8 +359,10 @@ async function updateReplacementSuggestionsForCandidates(
 			}
 		},
 		(_candidate, suggestions) => {
+			// Accumulate without re-rendering per batch; a single final render below
+			// avoids a burst of suggestion-panel rebuilds (and the MutationObserver
+			// reflows they trigger) while the user is typing.
 			loadedSuggestions.push(...suggestions)
-			renderMergedSuggestions()
 		},
 	)
 
@@ -418,7 +420,7 @@ export function handleReplacementSuggestionInput(event) {
 			false,
 			fieldSuggestions,
 		)
-	}, 250)
+	}, 400)
 }
 
 export async function handleRefreshSuggestionsClick() {
@@ -1236,16 +1238,21 @@ export function handleAddTermFromSelection() {
 	document.querySelector(".wtr-add-term-float-btn").style.display = "none"
 }
 
+// Debounced render + persist so each keystroke doesn't rebuild the whole term
+// list and write to GM storage synchronously. state is updated immediately so
+// pagination and other handlers stay consistent with the latest search value.
+const debouncedSearchRender = debounce((filter) => {
+	renderTermList(filter)
+	saveSearchFieldValue()
+}, 200)
+
 export function handleSearch(e) {
 	if (state.isDupMode) {
 		return
 	}
 	state.currentSearchValue = e.target.value
 	state.currentPage = 1
-	renderTermList(state.currentSearchValue)
-
-	// Immediately save the search field value for reactive behavior
-	saveSearchFieldValue()
+	debouncedSearchRender(state.currentSearchValue)
 }
 
 export async function handleDisableToggle(e) {

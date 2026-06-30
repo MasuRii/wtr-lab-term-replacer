@@ -362,6 +362,7 @@ const UI_CSS = `
     .wtr-replacer-term-text { font-family: var(--bs-font-monospace, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace); font-size: 0.9rem; word-wrap: break-word; }
     .wtr-term-original { color: var(--bs-danger, #dc3545) !important; font-weight: bold; }
     .wtr-term-replacement { color: var(--bs-success, #198754) !important; font-weight: bold; }
+    .wtr-term-replacement-empty { color: var(--bs-secondary-color, #6c757d) !important; font-weight: normal; font-style: italic; opacity: 0.85; }
 
     /* --- Floating Button --- */
     .wtr-add-term-float-btn {
@@ -557,12 +558,28 @@ function isWtrDarkModeActive(): boolean {
 	return isDarkRgb(pageBg) || window.matchMedia?.("(prefers-color-scheme: dark)")?.matches === true
 }
 
+// Dark-mode detection performs multiple full-document querySelectorAll scans and
+// getComputedStyle calls (forced reflows). The consolidated UI MutationObserver
+// flush calls syncUITheme() on every DOM mutation (including suggestion-panel
+// re-renders and the site's own background DOM churn), so cache the result to
+// avoid reflowing the document on every keystroke while editing.
+let cachedThemeDetection: { isDark: boolean; expiresAt: number } = { isDark: false, expiresAt: 0 }
+const THEME_DETECTION_CACHE_TTL = 1000
+
 export function syncUITheme() {
 	const uiContainer = document.querySelector(".wtr-replacer-ui") as HTMLElement | null
 	if (!uiContainer) {
 		return
 	}
-	uiContainer.dataset.theme = isWtrDarkModeActive() ? "dark" : "light"
+	const now = Date.now()
+	let isDark: boolean
+	if (now < cachedThemeDetection.expiresAt) {
+		isDark = cachedThemeDetection.isDark
+	} else {
+		isDark = isWtrDarkModeActive()
+		cachedThemeDetection = { isDark, expiresAt: now + THEME_DETECTION_CACHE_TTL }
+	}
+	uiContainer.dataset.theme = isDark ? "dark" : "light"
 }
 
 // Cache for the native floating "Add Term" button to avoid scanning every button on every mutation.
@@ -889,8 +906,9 @@ export function createUI() {
 	function validateAndUpdateUI() {
 		const isRegexEnabled = regexCheckbox.checked
 		const originalText = originalTextarea.value.trim()
-		const replacementText = replacementInput.value.trim()
-		const isValidInput = originalText.length > 0 && replacementText.length > 0
+		// An empty replacement is valid: it means "remove the matched text".
+		// Only the original text is required (regex validity is enforced below).
+		const isValidInput = originalText.length > 0
 		const regexWarning = document.getElementById("wtr-regex-disabled-warning")
 		const shouldWarnRegexDisabled = !isRegexEnabled && originalText.length > 0 && looksLikeRegexSyntax(originalText)
 
@@ -1097,7 +1115,12 @@ export function renderTermList(filter = "") {
 			originalSpan.textContent = term.original
 			const replacementSpan = document.createElement("span")
 			replacementSpan.className = "wtr-term-replacement"
-			replacementSpan.textContent = term.replacement
+			if (term.replacement) {
+				replacementSpan.textContent = term.replacement
+			} else {
+				replacementSpan.textContent = "(remove)"
+				replacementSpan.classList.add("wtr-term-replacement-empty")
+			}
 			termText.appendChild(originalSpan)
 			termText.appendChild(document.createTextNode(" → "))
 			termText.appendChild(replacementSpan)
