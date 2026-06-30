@@ -1,6 +1,6 @@
 {
 	"name": "wtr-lab-term-replacer-webpack",
-	"version": "5.7.4",
+	"version": "5.7.5",
 	"description": "Replace terms and names in WTR-Lab.com chapter text with your preferred versions. Per-novel term lists, regex support, whole-word and case-sensitive modes, import/export, duplicate detection, and live sync with WTR Lab Term Inconsistency Finder.",
 	"author": "MasuRii",
 	"license": "MIT",

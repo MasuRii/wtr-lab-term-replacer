@@ -8,6 +8,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 No unreleased changes.
 
+## [5.7.5] - 2026-07-01
+
+### Added
+- **Deletion terms** — leave Replacement Text empty to remove the matched text entirely. Empty-replacement terms display as `→ (remove)` in the terms list.
+
+### Changed
+- Replacement suggestions now render once after all lookup batches complete instead of re-rendering on every batch, reducing suggestion-panel rebuilds while editing.
+
+### Fixed
+- **Blank replacement** — the Save button is no longer disabled when Replacement Text is empty, enabling "remove only" terms. The replacement engine already deleted matched text on empty replacement; only UI validation was blocking it.
+
+### Performance
+- **Search** — debounced the terms list search (`handleSearch`) so it no longer rebuilds the whole list and writes to storage on every keystroke.
+- **Editing** — raised the replacement-suggestion input debounce (250ms → 400ms) and collapsed per-batch suggestion re-renders into a single final render.
+- **Theme sync** — cached `syncUITheme()` dark-mode detection (1s TTL) so the consolidated UI MutationObserver flush no longer forces full-document reflows on every DOM mutation, smoothing typing in both Original and Replacement fields.
+
 ## [5.7.4] - 2026-06-24
 
 ### Changed
